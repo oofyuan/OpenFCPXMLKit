@@ -171,7 +171,7 @@ let marker = FinalCutPro.FCPXML.HiddenClipMarker()
 // Add to clip via fcpxAnnotations / addToClip(annotationElements:)
 ```
 
-Do **not** confuse this DTD element with the Markers **report** concept of “Hidden”: report **Hidden** means a normal `marker` / `chapter-marker` whose `start` is outside the host clip’s media range (omitted by default; opt in with `includeMarkersOutsideClipBoundaries` / `--include-markers-outside-clip-boundaries`). See [19 — Reporting](20-Reporting.md#markers).
+Do **not** confuse this DTD element with the Markers **report** concept of “Hidden”: report **Hidden** means a normal `marker` / `chapter-marker` whose `start` is outside the host clip’s media range (omitted by default; opt in with `includeMarkersOutsideClipBoundaries` / `--include-markers-outside-clip-boundaries`). See [20 — Reporting](20-Reporting.md#markers).
 
 ---
 

@@ -18,6 +18,7 @@
   - [Projection migration checklist (Markers / Keywords / Titles / Transitions)](#projection-migration-checklist-markers--keywords--titles--transitions)
   - [Sections and columns](#sections-and-columns)
     - [Role inventory](#role-inventory)
+      - [Duplicate Frames](#duplicate-frames)
     - [Role Inventory screenshots](#role-inventory-screenshots)
     - [Markers](#markers)
     - [Keywords](#keywords)
@@ -287,7 +288,9 @@ Markers on title hosts attribute the title’s video **main** role (same casing 
 
 **Retimed clips and source span:** A retimed clip consumes a different amount of source than it occupies on the timeline, so **Source Duration** and **Source Out** scale the clip’s own timeline duration by its speed (`RoleInventorySourceSpan.retimedMediaSeconds`, Projection-first with a `timeMap` ratio fallback). A 50 % retime occupying `00:00:08:20` reports `00:00:04:10` of source. Identity clips are untouched and keep the timeline duration. The window’s `mediaIn` / `mediaOut` are deliberately not used for this: a `timeMap` routinely covers the whole source while the clip uses one slice. **Clip Duration** and **Timeline Out** always describe the timeline. Sign `retimed-source-duration-follows-speed`.
 
-**Duplicate Frames:** Duration of **source** that this row’s **Source In** / **Source Out** interval shares with any other inventoried usage of the same media resource (`resourceID`). The interval is exactly Source In + Source Duration — including speed-scaled duration on retimed clips — never the `timeMap` media bounds. Two 500 % clips of the same source whose Source In/Out do not overlap are **blank**, not a map-length duplicate. Same-clip video and audio rows are one host and do not count as each other’s duplicates. Blank when there is no overlap. Display-only; it never filters Speed Change rows. Sign `duplicate-frames-match-source-in-out`.
+##### Duplicate Frames
+
+Duration of **source** that this row’s **Source In** / **Source Out** interval shares with any other inventoried usage of the same media resource (`resourceID`). The interval is exactly Source In + Source Duration — including speed-scaled duration on retimed clips — never the `timeMap` media bounds. Two 500 % clips of the same source whose Source In/Out do not overlap are **blank**, not a map-length duplicate. Same-clip video and audio rows are one host and do not count as each other’s duplicates. Blank when there is no overlap. Display-only; it never filters Speed Change rows. Sign `duplicate-frames-match-source-in-out`.
 
 **Contained media:** For a `<clip>` / `<sync-clip>` shell, the durations reported come from the container’s visible span, not the child’s own `duration` — Final Cut Pro writes the full source length on the `<audio>` inside a trimmed clip. Projection enforces this (Sign `containers-bound-their-content-not-their-anchors`), so **Clip Duration**, **Timeline Out**, the per-role **Total**, and Summary percentages reflect timeline use.
 

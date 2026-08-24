@@ -323,7 +323,7 @@ From `FinalCutPro.FCPXML.VersionFeatureGate` (Authoring omit-on-write + converte
 | Preset | Extracts |
 |--------|----------|
 | `MarkersExtractionPreset` | `marker`, `chapter-marker`, `analysis-marker` → `ExtractedMarker` |
-| `EffectsExtractionPreset` | effects on `title` / `asset-clip` / `sync-clip` → `ExtractedEffect` |
+| `EffectsExtractionPreset` | effects on `title` / `asset-clip` / `sync-clip` → `ExtractedEffect` (Transform Position already Inspector px via sequence height; filter `param` pass-through) |
 | `TitlesExtractionPreset` | `title` (main-timeline visibility rules) |
 | `CaptionsExtractionPreset` | `caption` → `ExtractedCaption` |
 | `RolesExtractionPreset` | inherited roles by `RoleType` (nested `<spine>` / connected clips isolate from the host; Sign `secondary-storyline-clips-keep-own-roles`) |
@@ -356,7 +356,7 @@ Options presets: `.mainTimeline`, `.trackAnalysis`, `.forReport(...)` (`includeM
 
 | Sheet | `ReportOptions` | Primary source | Fallback |
 |-------|-----------------|----------------|----------|
-| Selected Roles Inventory (+ per-role) | `includeRoleInventory` | **Projection** windows | Extraction clip walk |
+| Selected Roles Inventory (+ per-role) | `includeRoleInventory` | **Projection** windows (Duplicate Frames = Source In/Out overlap by `resourceID`, never `timeMap` media bounds) | Extraction clip walk |
 | Markers | `includeMarkers` | **Projection** annotations (incl. occluded hosts; `mc-clip`/`ref-clip` hosts; chapter markers default on) | MarkersExtractionPreset (also keeps occluded-host markers) |
 | Keywords | `includeKeywords` | **Projection** (same host/occlusion policy; range clamp) | Extraction keyword walk |
 | Titles & Generators | `includeTitlesAndGenerators` | **Projection** (Role ▸ Subrole from host roles / `Title.role`; Title Text concatenates same-line style runs) | TitlesExtractionPreset |

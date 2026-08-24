@@ -273,6 +273,7 @@ var options = FinalCutPro.FCPXML.ReportOptions.full
 options.excludedRoles = ["Effects"]
 options.excludeDisabledClips = true
 options.excludedColumns = ["Reel", "Metadata", "Source File Path", "Duplicate Frames"]
+// Duplicate Frames is Source In/Out overlap for the same media resource; excluding it omits the column only
 options.timecodeFormat = .frames
 options.mediaBaseURL = URL(fileURLWithPath: "/path/to/project.fcpxmld")
 

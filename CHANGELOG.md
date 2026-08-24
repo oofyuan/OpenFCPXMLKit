@@ -17,7 +17,7 @@ OpenFCPXMLKit uses **New Features**, **Improvements**, and **Bug Fixes** for eac
 
 - **Suite:** **1254** listed (`swift test list` — **1240** + **10** + **4**), including Inspector-unit contract tests (`FCPXMLInspectorDisplayUnitsTests`) and Duplicate Frames source-range overlap tests (`FCPXMLRoleInventoryDuplicateFramesTests`).
 - **Inspector unit contract:** Video & Audio Effects / Role Inventory **Effects** Settings are locked to Final Cut Pro Inspector units (Position px from sequence height, Scale %, Rotation degrees, Opacity %, Blend Mode labels). Filter `param` Position (Draw Mask) is not converted. Sign `effect-settings-match-fcp-display`.
-- **Documentation sync:** Manual 14 / 20 (Inspector units table; Duplicate Frames = Source In/Out overlap), Coverage, ARCHITECTURE, AGENT, `.cursorrules`, and GUARDRAILS Signs `effect-settings-match-fcp-display` (unit table, sequence-height formula, Draw Mask pass-through, `FCPXMLInspectorDisplayUnitsTests`) and `duplicate-frames-match-source-in-out`.
+- **Documentation sync:** Manual 11–12 / 14 / 19–20 / 22 (Inspector units table; Duplicate Frames = Source In/Out overlap; chapter-20 cross-links), Coverage, Tests READMEs, ARCHITECTURE (Mermaid Support/DuplicateFrames + EffectsCollector `inspectorPixels`), AGENT, `.cursorrules`, and GUARDRAILS Signs `effect-settings-match-fcp-display` (unit table, sequence-height formula, Draw Mask pass-through, `FCPXMLInspectorDisplayUnitsTests`) and `duplicate-frames-match-source-in-out`.
 
 ### 🐛 Bug Fixes
 

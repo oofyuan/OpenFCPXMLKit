@@ -168,7 +168,7 @@ Common values:
 |-----------|--------|
 | `Row` / `Row Numbers` | Removes the Row index column from **every** Excel and PDF tabular sheet, including PDF multi-page Row injection |
 | `Role Subrole` / `Role > Subrole` / `Roles > Subrole` | Removes Role ▸ Subrole (ASCII ` > ` normalised to ` ▸ `; colours stay applied from the row model) |
-| `Duplicate Frames` | Removes the Duplicate Frames inventory column |
+| `Duplicate Frames` | Removes the Duplicate Frames inventory column (Source In/Out overlap for the same resource; Sign `duplicate-frames-match-source-in-out`) |
 | `Codecs`, `Ingest Date` | Removes the named fixed inventory columns |
 | `Frame Size` / `Frame Size / Audio Config` | Removes Frame Size / Audio Config |
 | `Reel`, `Scene`, `Take` | Removes the named fixed column |
@@ -176,7 +176,7 @@ Common values:
 | `Source File Path` | Removes Source File Path (and Missing Media on Media Summary) |
 | `Frame Rate` | Removes Frame Rate/Sample Rate (and related summary metric cells) |
 
-Unknown column names are ignored. See [19 — Reporting, Excel & PDF Export](20-Reporting.md#column-exclusion) for the full **ReportColumn** list and aliases.
+Unknown column names are ignored. See [20 — Reporting, Excel & PDF Export](20-Reporting.md#column-exclusion) for the full **ReportColumn** list and aliases.
 
 ```bash
 OpenFCPXMLKit-CLI --report \
@@ -188,7 +188,7 @@ OpenFCPXMLKit-CLI --report \
 
 #### Timecode display format
 
-`--timecode-format` controls how timeline and source time columns are written in Excel and PDF exports (and appends a header suffix when not using default SMPTE frames). See [19 — Reporting, Excel & PDF Export](20-Reporting.md#timecode-display-format).
+`--timecode-format` controls how timeline and source time columns are written in Excel and PDF exports (and appends a header suffix when not using default SMPTE frames). See [20 — Reporting, Excel & PDF Export](20-Reporting.md#timecode-display-format).
 
 | Value | Cells | Example headers |
 |-------|-------|-----------------|
