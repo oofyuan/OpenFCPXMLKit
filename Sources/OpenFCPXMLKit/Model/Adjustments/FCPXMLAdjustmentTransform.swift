@@ -155,6 +155,24 @@ extension FinalCutPro.FCPXML {
             )
         }
         
+        /// Converts an FCPXML `adjust-transform` position into Final Cut Pro Inspector pixels.
+        ///
+        /// FCPXML stores position as a **percentage of the containing sequence’s frame
+        /// height** on both axes (origin at frame centre). The Inspector, when set to
+        /// pixel units, shows `xmlValue × sequenceHeight / 100`. Do not use the clip or
+        /// source format height — Spatial Conform Fill and a different clip `format`
+        /// do not change Inspector pixels.
+        ///
+        /// Returns the XML value unchanged when `sequenceHeight` is missing or non-positive.
+        public static func inspectorPixels(
+            fromXMLPosition position: Point,
+            sequenceHeight: Double?
+        ) -> Point {
+            guard let sequenceHeight, sequenceHeight > 0 else { return position }
+            let scale = sequenceHeight / 100
+            return Point(x: position.x * scale, y: position.y * scale)
+        }
+        
         private static func childParams(of element: any OFKXMLElement) -> [any OFKXMLElement] {
             element.childElements.filter { $0.name == "param" }
         }

@@ -30,8 +30,8 @@ Typed models with **Clip** accessors (see **FCPXMLClip+Adjustments**):
 |-------|--------|
 | **CropAdjustment** | Crop, trim, pan modes |
 | **CornersAdjustment** | Four-corner pin (`adjust-corners`) |
-| **TransformAdjustment** | Position, scale, rotation, anchor. `componentSamples` reads attributes and nested `param` keyframes (identity 0 / 0° / 100% omitted). Used by Effects extraction and Role Inventory **Effects**. |
-| **BlendAdjustment** | Blend amount (0.0–1.0) and mode. Reports format amount as Opacity percent × 100. |
+| **TransformAdjustment** | Position, scale, rotation, anchor. `componentSamples` reads attributes and nested `param` keyframes (identity 0 / 0° / 100% omitted — compare XML units). FCPXML Position is `%` of the **containing sequence height**; `inspectorPixels(fromXMLPosition:sequenceHeight:)` converts to Inspector pixels (`xml × height / 100` on both axes — never the clip/source format). Used by Effects extraction and Role Inventory **Effects**. |
+| **BlendAdjustment** | Blend amount (0.0–1.0) and mode. Reports format amount as Opacity percent × 100; XML mode tokens become Inspector labels (`colorDodge` → Color Dodge). |
 | **StabilizationAdjustment** | automatic, inertiaCam, smoothCam |
 | **VolumeAdjustment** | Volume level |
 | **PannerAdjustment** | Stereo/surround panner (`adjust-panner`) |
@@ -47,8 +47,10 @@ Typed models with **Clip** accessors (see **FCPXMLClip+Adjustments**):
 | **ColorConformAdjustment** (1.11+) | Color conform |
 | **Stereo3DAdjustment** (1.13+) | Stereo 3D |
 | **VoiceIsolationAdjustment** (1.14) | Voice isolation |
-| **ConformAdjustment** | Conform type |
+| **ConformAdjustment** | Conform type (`fit` / `fill` / `none`). Reports show Fit / Fill / None. |
 | **RollingShutterAdjustment** | Rolling shutter amount |
+
+Report display of Transform, Blend, Spatial Conform, and Volume uses Final Cut Pro Inspector units (Position pixels from **sequence** height, not clip format). See [20 — Reporting, Inspector units](20-Reporting.md#inspector-units). Do not apply Transform Position conversion to filter `param` Position (Draw Mask).
 
 Example:
 

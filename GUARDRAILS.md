@@ -4,7 +4,7 @@ Hard constraints for contributors and AI agents. Prefer this file when deciding 
 
 **See also:** [ARCHITECTURE.md](ARCHITECTURE.md), [.cursorrules](.cursorrules), [AGENT.md](AGENT.md), [Tests/README.md](Tests/README.md), [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Current suite (keep in sync):** **1244** tests listed in `swift test list` — **1230** in `OpenFCPXMLKitTests` + **10** optional `ExcelReportTest` + **4** optional `ShotExtractionTest` (all Swift Testing `@Test`; no XCTest); **60** public sample `.fcpxml` files.
+**Current suite (keep in sync):** **1254** tests listed in `swift test list` — **1240** in `OpenFCPXMLKitTests` + **10** optional `ExcelReportTest` + **4** optional `ShotExtractionTest` (all Swift Testing `@Test`; no XCTest); **60** public sample `.fcpxml` files.
 
 ---
 
@@ -116,7 +116,8 @@ See ARCHITECTURE.md §2.7 for the full “where to put a change” table.
 | **Per-role Total footer** | Per-role inventory sheets may show an optimistic **Clip Duration** sum (`RoleInventorySheetTotal`). It is **not** overlap-aware; do not conflate with Summary’s `summaryOverlapAwareDurations`. Selected Roles Inventory has no Total footer. |
 | **CLI modifiers need `--report`** | Report-only flags (`--report-full`, section flags including `--report-non-standard-effects`, `--protect-sheets`, `--create-pdf`, exclusions, …) must require `--report`. |
 | **Excluded roles apply to all role-bearing sheets** | `excludedRoles` / `--exclude-role` omit matching Role ▸ Subrole rows from Role Inventory, Markers, Keywords, Titles & Generators, Video & Audio Effects, Speed Change Effects, and Summary durations. Match main role, full `Main ▸ Sub`, raw FCP ids, and Excel-truncated sheet tabs (`sheetTabName`, 31 chars). Do not filter inventory only. Empty Role ▸ Subrole fields stay. Transitions / Non-Std / Media Summary have no clip role column. |
-| **Effect settings match FCP** | Keep blend amount 0–1 in Extraction; format Opacity percent × 100. Transform uses `componentSamples` (identity omitted). Inventory **Effects** uses the same formatted values, not names-only. Sign `effect-settings-match-fcp-display`. |
+| **Effect settings match FCP Inspector** | Convert in Extraction; Reporting formats only. Transform Position is `%` of **containing sequence height** → Inspector px (`xml × height / 100` on both axes — never clip/source format). Scale `1` = 100%; Rotation degrees; Opacity 0–1 → percent; Blend Mode XML tokens → Inspector labels. Filter `param` values are pass-through (do **not** convert Draw Mask / Motion Position). Lock with `FCPXMLInspectorDisplayUnitsTests`. Sign `effect-settings-match-fcp-display`. |
+| **Duplicate Frames matches Source In/Out** | Role Inventory **Duplicate Frames** is the union of overlapping **Source In** + **Source Duration** intervals for the same `resourceID`. Never use Projection `mediaIn` / `mediaOut` (a `timeMap` spans the whole source). Do not treat the same host clip’s video and audio rows as duplicates of each other. Lock with `FCPXMLRoleInventoryDuplicateFramesTests`. Sign `duplicate-frames-match-source-in-out`. |
 | **Title Text matches FCP on-screen** | Concatenate `text-style` runs inside one `<text>`; use ` | ` only between `<text>` children. Fix in Model (`Title+Typed`). Sign `title-text-same-line-runs-concatenate`. |
 | **No help-submenu refactor by default** | Keep flat ArgumentParser flags + `@OptionGroup` unless a maintainer explicitly requests a subcommand redesign. |
 
@@ -207,7 +208,7 @@ Append new signs when a failure repeats or a design decision must not drift. Kee
 ### Sign: swift-testing-only
 - **Trigger:** Adding or changing any test under `Tests/`.
 - **Instruction:** Use Swift Testing only (`@Suite` / `@Test` / `#expect` / `#require`). Never reintroduce XCTest or mix frameworks in one file. Harness: `tryLoad*` in `FCPXMLTestSampleLoading` (core) and `require*` in `FCPXMLTestingSampleSupport` (`Test.cancel` for optional fixtures; hard fail for missing bundled samples). Performance: `ContinuousClock` sanity budgets, not XCTest `measure`. Update suite counts in Tests/README + agent docs when the suite grows.
-- **Reason:** Migration (former Phases 0–7) is complete; the suite is **1244** listed tests, all Swift Testing. Hybrid XCTest + Testing caused skip/cancel confusion and dual harness drift.
+- **Reason:** Migration (former Phases 0–7) is complete; the suite is **1254** listed tests, all Swift Testing. Hybrid XCTest + Testing caused skip/cancel confusion and dual harness drift.
 - **Provenance:** 2026-07-18 — phased migration completed; supersedes prior hybrid-only and cutover-phase Signs.
 
 ### Sign: effects-role-type-filter
@@ -282,6 +283,12 @@ Append new signs when a failure repeats or a design decision must not drift. Kee
 - **Reason:** Source Duration was hardcoded to the timeline `clipDuration`, so a 50% clip of `00:00:08:20` reported `00:00:08:20` of source instead of `00:00:04:10`, and Source Out marked a range twice the media actually used. `RetimingSegment.scale` is authoritative for speed; a segment's `mediaDuration` can disagree with it because media bounds may span the whole map.
 - **Provenance:** 2026-08-21 — Role Inventory source duration ignored retiming.
 
+### Sign: duplicate-frames-match-source-in-out
+- **Trigger:** Role Inventory **Duplicate Frames**, or comparing that column to Source In / Source Out / Source Duration on a retimed or reused clip.
+- **Instruction:** Intersect each inventoried usage’s **Source In** + **Source Duration** (the same interval the inventory columns show; scale Source Duration by speed via `RoleInventorySourceSpan`) with other usages of the same `resourceID`. Identify a usage by the host clip’s XML node (`backingObject`), not clip name + Timeline In — stacked same-name clips at the same start are still distinct, and a J/L-cut clip’s video/audio rows are the same host. Never read overlap from `MediaUsageWindow.mediaIn` / `mediaOut`: a shared `timeMap` routinely covers the whole source while each clip uses one slice, which previously marked non-overlapping Source In/Out ranges as multi-minute duplicates. Blank when there is no overlap. Do not use Duplicate Frames to filter Speed Change rows (Sign `speed-change-row-per-timeline-usage`).
+- **Reason:** Projection media bounds describe the map, not the clip. Two 500% clips of the same source with Source In `01:24:16` and `01:24:18` overlap ~3 s of source; Source In `10:12:35` vs `10:13:04` do not overlap and must be blank — not `00:06:41:04` from the map span. Unretimed Clip 50 same-start reuse is a full duplicate (`00:00:05:10`); a later start that still overlaps reports only that overlap (`00:00:02:18`).
+- **Provenance:** 2026-08-24 — Sample.fcpxmld / VFX Production Data Duplicate Frames false positives on retimed clips.
+
 ### Sign: containers-bound-their-content-not-their-anchors
 - **Trigger:** Projection windows for media nested inside a `<clip>` / `<sync-clip>` / `<gap>`, and every duration derived from them (Role Inventory **Clip Duration** / **Timeline Out** / **Source Duration**, per-role **Total**, Summary).
 - **Instruction:** When descending into a container, compose an identity `RetimingSegment` over the container's own span (`absoluteStart` + `fcpDuration`) into `parentRetimings` for children that carry **no** `lane`. Children with a `lane` are connected clips, not content, and keep their own extent. Never trust a contained child's `duration`: Final Cut Pro writes the full source length on the `<audio>` inside a trimmed `<clip>`, so the child routinely overhangs its container by minutes. This mirrors `_fcpEffectiveOcclusion`, where the immediate parent always clips the element — keep Projection and Extraction agreeing on the visible span.
@@ -337,10 +344,23 @@ Append new signs when a failure repeats or a design decision must not drift. Kee
 - **Provenance:** 2026-08-18 / 2026-08-20 — role-exclusion gaps on Effects and Excel 31-character sheet tabs.
 
 ### Sign: effect-settings-match-fcp-display
-- **Trigger:** Video & Audio Effects Settings / Role Inventory **Effects** / `adjust-blend` / `adjust-transform` / `filter-video` params.
-- **Instruction:** Keep `adjust-blend amount` as a 0.0–1.0 fraction in Extraction; format as Opacity percent × 100 (`0.3987` → `Opacity 39.9%`). Parse `adjust-transform` attributes and nested `param` keyframes in Model (`TransformAdjustment.componentSamples`); omit identity Position / Rotation / Scale; non-uniform scale is `Scale X …%, Y …%`. Filter Settings are inspector `param` name/value pairs (skip ozxml / base64 / empty names / Motion `Value` vertices); do not invent blob meaning. Resolve Apple from the `effect` resource UID, not a hardcoded `true`. Inventory **Effects** uses the same formatted settings (grouped names), not names-only. Do not invent a second unit system in Reporting.
-- **Reason:** Transform on spine `<clip>` wrappers and keyframed scale never reached Effects; Opacity `0.3987` was printed as `0.4%`; inventory listed `Transform, Transform, Transform`; filter Settings duplicated the effect name and hid Color Adjustments inspector values.
-- **Provenance:** 2026-08-18 — Production Data Sample.fcpxmld Video & Audio Effects / Role Inventory Effects.
+- **Trigger:** Video & Audio Effects Settings / Role Inventory **Effects** / `adjust-blend` / `adjust-transform` / `filter-video` params / any new Inspector-facing report value.
+- **Instruction:** Convert in **Extraction**; keep **Reporting** presentation-thin (`ReportFormatting.effectSettingsDisplay`). Model keeps raw XML (`TransformAdjustment.componentSamples`). Identity Position / Rotation / Scale is omitted **before** conversion (compare XML units, not pixels). Inventory **Effects** uses the same formatted settings (grouped names), not names-only. Resolve Apple from the `effect` resource UID, not a hardcoded `true`. Filter Settings are inspector `param` name/value pairs (skip ozxml / base64 / empty names / Motion `Value` vertices). Do not invent a second unit system in Reporting. Lock the contract with `FCPXMLInspectorDisplayUnitsTests`.
+
+  | Setting | FCPXML | Inspector / report |
+  |---|---|---|
+  | Transform Position | `%` of **containing sequence** height (both axes; origin at frame centre) | `inspectorPixels`: `xml × height / 100` px — **never** clip/source format. Example: sequence `2048×930`, XML `-8.84241 -14.0753` → **−82.2 px, −130.9 px** (not `-8.8 px`). |
+  | Transform Scale | `1` = 100% | percent × 100 (`1.28` → `128.0%`; non-uniform `Scale X …%, Y …%`) |
+  | Transform Rotation | degrees | degrees |
+  | Opacity | `adjust-blend amount` 0.0–1.0 | percent × 100 (`0.3987` → `Opacity 39.9%`) |
+  | Spatial Conform | `fit` / `fill` / `none` | Fit / Fill / None |
+  | Blend Mode | XML token (`multiply`, `colorDodge`) | Inspector label (`Multiply`, `Color Dodge`) |
+  | Volume | dB | dB (`-3dB` → `-3.0 dB`) |
+  | Filter params | `param` value as written | **pass-through** — do **not** apply Transform Position conversion to Draw Mask / Motion Position |
+
+  Crop / Anchor / Panner are **not** on the Effects sheet today. If added later, give each its own Inspector conversion — Anchor shares Transform Position’s XML unit; Crop does not. Do **not** claim 100% of every Motion / FxPlug Inspector control; those need per-effect FCP screenshots.
+- **Reason:** Transform on spine `<clip>` wrappers and keyframed scale never reached Effects; Opacity `0.3987` was printed as `0.4%`; inventory listed `Transform, Transform, Transform`; filter Settings duplicated the effect name and hid Color Adjustments inspector values; Position was labeled `px` while still in sequence-height percent (`-8.8` vs Inspector `-82.2`).
+- **Provenance:** 2026-08-18 — Production Data Sample.fcpxmld Video & Audio Effects / Role Inventory Effects. Position unit conversion and Inspector-unit contract 2026-08-24.
 
 ### Sign: report-out-is-last-visible-frame
 - **Trigger:** Formatting Timeline Out / Source Out on any Excel/PDF report sheet, or comparing Out to Duration.

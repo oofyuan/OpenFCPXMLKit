@@ -25,6 +25,7 @@
     - [Transitions](#transitions)
     - [Non-Std Effects & Templates](#non-std-effects--templates)
     - [Video & Audio Effects](#video--audio-effects)
+      - [Inspector units](#inspector-units)
     - [Speed Change Effects](#speed-change-effects)
     - [Summary](#summary)
     - [Media Summary](#media-summary)
@@ -286,6 +287,8 @@ Markers on title hosts attribute the title’s video **main** role (same casing 
 
 **Retimed clips and source span:** A retimed clip consumes a different amount of source than it occupies on the timeline, so **Source Duration** and **Source Out** scale the clip’s own timeline duration by its speed (`RoleInventorySourceSpan.retimedMediaSeconds`, Projection-first with a `timeMap` ratio fallback). A 50 % retime occupying `00:00:08:20` reports `00:00:04:10` of source. Identity clips are untouched and keep the timeline duration. The window’s `mediaIn` / `mediaOut` are deliberately not used for this: a `timeMap` routinely covers the whole source while the clip uses one slice. **Clip Duration** and **Timeline Out** always describe the timeline. Sign `retimed-source-duration-follows-speed`.
 
+**Duplicate Frames:** Duration of **source** that this row’s **Source In** / **Source Out** interval shares with any other inventoried usage of the same media resource (`resourceID`). The interval is exactly Source In + Source Duration — including speed-scaled duration on retimed clips — never the `timeMap` media bounds. Two 500 % clips of the same source whose Source In/Out do not overlap are **blank**, not a map-length duplicate. Same-clip video and audio rows are one host and do not count as each other’s duplicates. Blank when there is no overlap. Display-only; it never filters Speed Change rows. Sign `duplicate-frames-match-source-in-out`.
+
 **Contained media:** For a `<clip>` / `<sync-clip>` shell, the durations reported come from the container’s visible span, not the child’s own `duration` — Final Cut Pro writes the full source length on the `<audio>` inside a trimmed clip. Projection enforces this (Sign `containers-bound-their-content-not-their-anchors`), so **Clip Duration**, **Timeline Out**, the per-role **Total**, and Summary percentages reflect timeline use.
 
 **Per-role Total footer:** Each non-empty per-role sheet ends with a blank row, then a **Total:** label under **Timeline Out** and an optimistic sum of that sheet’s **Clip Duration** values under **Clip Duration**. Both cells use the same black-background / white-text style as column headers. **Selected Roles Inventory** has no Total footer. If Timeline Out or Clip Duration is excluded, the footer is omitted. The sum is presentation-thin (`RoleInventorySheetTotal` — parses already-formatted `clipDuration` strings); it is **not** overlap-aware (Summary’s `summaryOverlapAwareDurations` stays Summary-only). Excel and PDF draw the same footer in the table content area (not the PDF running page footer).
@@ -388,7 +391,24 @@ Lists **non-Apple** `<effect>` resources from the document (UID does not match A
 
 **EffectsReportSection** of **EffectReportRow**: **Row**, Effect, Settings, Enabled, Apple, Clip Name, Role ▸ Subrole, Timeline In/Out.
 
-Settings match Final Cut Pro inspector units. `adjust-blend amount` is a 0.0–1.0 fraction and is shown as **Opacity** percent (`0.3987` → `Opacity 39.9%`). Non-identity **Blend Mode** is listed when `adjust-blend mode` is set. **Transform** lists non-default **Position**, **Rotation**, and **Scale** from attributes and nested `param` keyframes (identity 0 / 0° / 100% is omitted). Uniform scale is `Scale 159.0%`; non-uniform is `Scale X …%, Y …%`. `filter-video` / `filter-audio` Settings are inspector `param` name/value pairs (for example Color Adjustments **Exposure 34**); Motion `data` / ozxml blobs and unnamed vertex internals are omitted rather than decoded. Spine `<clip>` / `<video>` wrappers are effect hosts so a resize on a clip wrapper appears here, not only on Role Inventory. The Role Inventory **Effects** column uses the same formatted values. Sign `effect-settings-match-fcp-display`.
+Spine `<clip>` / `<video>` wrappers are effect hosts, so a resize on a clip wrapper appears here, not only on Role Inventory. The Role Inventory **Effects** column uses the same formatted values. Sign `effect-settings-match-fcp-display`.
+
+##### Inspector units
+
+Report Settings must match what Final Cut Pro’s Inspector shows for **built-in** clip adjustments. Convert in Extraction (`EffectsCollector` / `TransformAdjustment.inspectorPixels`); Reporting only formats (`ReportFormatting.effectSettingsDisplay`). Model keeps raw FCPXML. Identity Position / Rotation / Scale is detected in XML units before conversion. Lock: `FCPXMLInspectorDisplayUnitsTests`.
+
+| Setting | FCPXML | Inspector / report |
+|---------|--------|-------------------|
+| Transform Position | Percentage of the **containing sequence’s frame height** on both axes (origin at frame centre). Do **not** use the clip or source format — Spatial Conform Fill does not change Inspector pixels. | `xml × sequenceHeight / 100` px, one decimal. Example: sequence **2048×930**, XML `position="-8.84241 -14.0753"` → **−82.2 px, −130.9 px** (not `-8.8 px, -14.1 px`). |
+| Transform Scale | `1` = 100% | Uniform `Scale 128.0%`; non-uniform `Scale X …%, Y …%` |
+| Transform Rotation | Degrees | `Rotation 12.5°` |
+| Opacity | `adjust-blend amount` `0…1` | `Opacity 39.9%` |
+| Spatial Conform | `fit` / `fill` / `none` | Fit / Fill / None |
+| Blend Mode | XML token (`multiply`, `colorDodge`) | **Multiply**, **Color Dodge** |
+| Volume | dB | `-3.0 dB` |
+| Filter params (Draw Mask, Color Adjustments, Motion/FxPlug) | `param` name/value as written (ozxml / base64 / unnamed vertices omitted) | Pass-through. Draw Mask **Position** `217.606 46.7851` is **not** converted with Transform Position. |
+
+Crop, Anchor, and Panner are not listed on this sheet today. If they are added later, each needs its own Inspector conversion (Anchor shares Transform Position’s XML unit; Crop does not). Reports cannot guarantee 100% of every Motion / FxPlug Inspector control without per-effect FCP screenshots.
 
 #### Speed Change Effects
 
@@ -511,7 +531,7 @@ At build time, labels are resolved to `Set<ReportColumn>` and stored on **`Repor
 | `.sourceOut` | Source Out | |
 | `.sourceDuration` | Source Duration | |
 | `.sourcePosition` | Source Position | Markers |
-| `.duplicateFrames` | Duplicate Frames | Source-range reuse duration (blank when none); after Source Duration |
+| `.duplicateFrames` | Duplicate Frames | Overlap of this row’s Source In/Out with other usages of the same resource (blank when none); after Source Duration. Sign `duplicate-frames-match-source-in-out` |
 | `.markers` | Markers | |
 | `.keywords` | Keywords / Keyword | |
 | `.effects` | Effects / Effect | |

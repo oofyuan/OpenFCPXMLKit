@@ -1017,6 +1017,18 @@ extension FinalCutPro.FCPXML {
             .joined(separator: ", ")
         }
 
+        /// Formats effect settings in Final Cut Pro Inspector units.
+        ///
+        /// | Setting | FCPXML | Inspector / report |
+        /// |---|---|---|
+        /// | Transform Position | % of **sequence** height | `xml × height / 100` px (1 decimal) |
+        /// | Transform Scale | `1` = 100% | percent × 100 |
+        /// | Transform Rotation | degrees | degrees |
+        /// | Opacity | `0…1` | percent × 100 |
+        /// | Spatial Conform | `fit` / `fill` / `none` | Fit / Fill / None |
+        /// | Volume | dB | dB |
+        /// | Blend Mode | XML token (`multiply`, `colorDodge`) | Inspector label (`Multiply`, `Color Dodge`) |
+        /// | Filter params | `param` value as written | pass-through (do **not** apply Transform Position conversion) |
         static func effectSettingsDisplay(for settings: ExtractedEffect.Settings) -> String {
             switch settings {
             case .empty:
@@ -1025,7 +1037,12 @@ extension FinalCutPro.FCPXML {
                 return value
             case .namedValues(let pairs):
                 return pairs
-                    .map { "\($0.name) \($0.value)" }
+                    .map { pair in
+                        if pair.name == "Blend Mode" {
+                            return "\(pair.name) \(inspectorBlendModeDisplay(pair.value))"
+                        }
+                        return "\(pair.name) \(pair.value)"
+                    }
                     .joined(separator: "; ")
             case .decibels(let amount):
                 return String(format: "%.1f dB", amount)
@@ -1049,6 +1066,20 @@ extension FinalCutPro.FCPXML {
                 }
                 return String(format: "Scale X %.1f%%, Y %.1f%%", xPercent, yPercent)
             }
+        }
+        
+        /// Inspector label for `adjust-blend mode` (`multiply` → `Multiply`, `colorDodge` → `Color Dodge`).
+        static func inspectorBlendModeDisplay(_ mode: String) -> String {
+            let trimmed = mode.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return trimmed }
+            let spaced = trimmed.replacingOccurrences(
+                of: "([a-z])([A-Z])",
+                with: "$1 $2",
+                options: .regularExpression
+            )
+            return spaced.split(separator: " ").map { word in
+                word.prefix(1).uppercased() + word.dropFirst()
+            }.joined(separator: " ")
         }
     }
 }

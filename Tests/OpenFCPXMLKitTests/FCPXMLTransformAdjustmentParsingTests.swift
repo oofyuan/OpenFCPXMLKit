@@ -194,6 +194,24 @@ struct FCPXMLTransformAdjustmentParsingTests {
         }
         #expect(hasAnimatedPosition)
     }
+    
+    @Test("Inspector pixels scale XML position by sequence height over 100")
+    func inspectorPixelsScaleXMLPositionBySequenceHeight() {
+        let xml = FinalCutPro.FCPXML.Point(x: -8.84241, y: -14.0753)
+        let pixels = TransformAdjustment.inspectorPixels(
+            fromXMLPosition: xml,
+            sequenceHeight: 930
+        )
+        
+        #expect(abs(pixels.x - (-82.234413)) < 0.001)
+        #expect(abs(pixels.y - (-130.90029)) < 0.001)
+        
+        let unchanged = TransformAdjustment.inspectorPixels(
+            fromXMLPosition: xml,
+            sequenceHeight: nil
+        )
+        #expect(unchanged == xml)
+    }
 
     private func makeAdjustTransformElement(
         position: String? = nil,

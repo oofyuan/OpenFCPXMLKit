@@ -18,6 +18,7 @@ extension FinalCutPro.FCPXML {
             timecodeFormat: ReportTimecodeFormat = .smpteFrames,
             projectionWindows: [MediaUsageWindow]? = nil,
             windowIndex: ProjectionWindowIndex? = nil,
+            duplicateUsageIndex: RoleInventoryDuplicateFrames.UsageIndex = RoleInventoryDuplicateFrames.UsageIndex(),
             includeScreenshots: Bool = false,
             mediaBaseURL: URL? = nil
         ) -> RoleClipReportRow? {
@@ -111,8 +112,7 @@ extension FinalCutPro.FCPXML {
             let duplicateFrames = RoleInventoryDuplicateFrames.formattedDuration(
                 for: extracted,
                 usesAudioTimelineBounds: entry.usesAudioTimelineBounds,
-                projectionWindows: projectionWindows,
-                windowIndex: windowIndex,
+                usageIndex: duplicateUsageIndex,
                 timecodeFormat: timecodeFormat
             )
             let speedChangeSettings = RoleInventorySpeedChangeSettings.formattedSettings(

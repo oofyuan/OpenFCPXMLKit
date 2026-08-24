@@ -378,10 +378,18 @@ extension FinalCutPro.FCPXML {
             into effects: inout [ExtractedEffect]
         ) {
             let samples = TransformAdjustment.componentSamples(from: transform)
+            let sequenceHeight = containingSequenceHeight(for: host)
             
             var components: [ExtractedEffect.Settings] = []
             for position in samples.positions where !isIdentityPosition(position) {
-                components.append(.transformCenter(position))
+                components.append(
+                    .transformCenter(
+                        TransformAdjustment.inspectorPixels(
+                            fromXMLPosition: position,
+                            sequenceHeight: sequenceHeight
+                        )
+                    )
+                )
             }
             for rotation in samples.rotations where !isIdentityRotation(rotation) {
                 components.append(.transformRotation(rotation))
@@ -404,6 +412,26 @@ extension FinalCutPro.FCPXML {
                     )
                 )
             }
+        }
+        
+        /// Frame height of the nearest containing `<sequence>`, not the clip’s own format.
+        private static func containingSequenceHeight(
+            for host: ExtractedElement
+        ) -> Double? {
+            let sequence = host.element.ancestorElements(includingSelf: true)
+                .first(whereFCPElementType: .sequence)
+                ?? host.breadcrumbs.first(whereFCPElementType: .sequence)
+            let resources = host.resources ?? host.element.fcpRootResources
+            guard let sequence,
+                  let formatID = sequence.fcpFormat,
+                  let format = sequence._fcpFormatResource(
+                    forResourceID: formatID,
+                    in: resources
+                  ),
+                  let height = format.height,
+                  height > 0
+            else { return nil }
+            return Double(height)
         }
         
         private static func isIdentityPosition(_ position: Point) -> Bool {

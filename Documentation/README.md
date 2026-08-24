@@ -32,13 +32,13 @@ The manual is split into **chapters** for easier navigation and maintenance:
 | [11 — Extraction & Media](Manual/11-Extraction-Media.md) | Extraction scope and presets, inherited roles, leaf media URL resolution (`fcpMediaURL` / `fcpMediaRepresentationURLs`), media extraction and copy |
 | [12 — Timeline Projection](Manual/12-Timeline-Projection.md) | `TimelineProjector`, `MediaUsageWindow`, options (incl. marker/keyword annotation knobs), occupancy, container-bounded contained media, report project-once; inventory vs unfolded `mc-angle` |
 | [13 — Media Processing](Manual/13-Media-Processing.md) | MIME type, asset validation, silence detection, duration, parallel I/O |
-| [14 — Typed Models](Manual/14-Typed-Models.md) | Adjustments (incl. Corners/Panner), filters, captions/titles, keyframe animation, Live Drawing, collections |
+| [14 — Typed Models](Manual/14-Typed-Models.md) | Adjustments (incl. Corners/Panner; Transform `inspectorPixels` via sequence height), filters, captions/titles, keyframe animation, Live Drawing, collections |
 | [15 — XML Extensions](Manual/15-XML-Extensions.md) | OFKXMLDocument and OFKXMLElement FCPXML extensions (cross-platform) |
 | [16 — High-Level Model](Manual/16-High-Level-Model.md) | FinalCutPro.FCPXML, Root, events, projects |
 | [17 — Cross-Platform & iOS](Manual/17-Cross-Platform-iOS.md) | XML abstraction layer, Foundation vs AEXML, iOS support |
 | [18 — Errors & Utilities](Manual/18-Errors-Utilities.md) | Error types, ErrorHandling, ProgressBar, FCPXMLUID |
 | [19 — CLI](Manual/19-CLI.md) | Experimental command-line interface (OpenFCPXMLKit-CLI) |
-| [20 — Reporting, Excel & PDF Export](Manual/20-Reporting.md) | Report builder, ReportOptions (`excludedRoles` on every role-bearing sheet (incl. Excel-truncated tabs), Out = last visible frame, FCP-matching Effects settings, Title Text concat, `includeScreenshotsInRoleInventory` — original-first Source In embeds, `includeSpeedChangeSettingsInRoleInventory`, `copyrightLabel`, four-row cover / `visitURL`, `protectSheets`, Speed Change one row per usage / retimed Source Duration, secondary-storyline / connected clips keep own roles, unfolded `mc-angle` interiors omitted, …), inventory Total / Duplicate Frames / optional Screenshot, Projection-first sections, Excel/PDF export |
+| [20 — Reporting, Excel & PDF Export](Manual/20-Reporting.md) | Report builder, ReportOptions (`excludedRoles` on every role-bearing sheet (incl. Excel-truncated tabs), Out = last visible frame, Inspector-unit Effects settings (Position px from sequence height; filter params pass-through), Title Text concat, `includeScreenshotsInRoleInventory` — original-first Source In embeds, `includeSpeedChangeSettingsInRoleInventory`, `copyrightLabel`, four-row cover / `visitURL`, `protectSheets`, Speed Change one row per usage / retimed Source Duration, secondary-storyline / connected clips keep own roles, unfolded `mc-angle` interiors omitted, …), inventory Total / Duplicate Frames / optional Screenshot, Projection-first sections, Excel/PDF export |
 | [21 — Shot Extraction](Manual/21-Shot-Extraction.md) | Primary stills → PNG + CSV / [csv2notion-neo](https://github.com/TheAcharya/csv2notion-neo) Notion JSON (CSV column key order); `planShots` / `--dry-run`; reject video / titles / audio; optional `ShotExtractionTest` |
 | [22 — Examples](Manual/22-Examples.md) | End-to-end workflows and code examples |
 
@@ -52,7 +52,7 @@ The manual covers the **entire public API** with examples: core operations, asyn
 
 Architecture philosophy: [ARCHITECTURE.md](../ARCHITECTURE.md) §2.7. Hard constraints: [GUARDRAILS.md](../GUARDRAILS.md). **Element / layer inventory:** [Coverage.md](Coverage.md) (Model · Authoring · Extraction · Projection · Reporting matrices).
 
-**Test count (keep in sync):** **1244** listed in `swift test list` — **1230** in `OpenFCPXMLKitTests` + **10** optional `ExcelReportTest` + **4** optional `ShotExtractionTest` (all Swift Testing `@Test`); **60** sample `.fcpxml` files. Private user exports for local investigation: [Tests/Submitted FCPXML](../Tests/Submitted%20FCPXML/README.md) (gitignored; never commit to GitHub).
+**Test count (keep in sync):** **1254** listed in `swift test list` — **1240** in `OpenFCPXMLKitTests` + **10** optional `ExcelReportTest` + **4** optional `ShotExtractionTest` (all Swift Testing `@Test`); **60** sample `.fcpxml` files. Private user exports for local investigation: [Tests/Submitted FCPXML](../Tests/Submitted%20FCPXML/README.md) (gitignored; never commit to GitHub).
 
 ---
 
