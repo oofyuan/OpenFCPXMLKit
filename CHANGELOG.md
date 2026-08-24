@@ -7,6 +7,25 @@ OpenFCPXMLKit uses **New Features**, **Improvements**, and **Bug Fixes** for eac
 
 ---
 
+## [3.3.12](https://github.com/TheAcharya/OpenFCPXMLKit/releases/tag/3.3.12) - 2026-08-24
+
+### ✨ New Features
+
+- None in this release.
+
+### 🔧 Improvements
+
+- **Suite:** **1254** listed (`swift test list` — **1240** + **10** + **4**), including Inspector-unit contract tests (`FCPXMLInspectorDisplayUnitsTests`) and Duplicate Frames source-range overlap tests (`FCPXMLRoleInventoryDuplicateFramesTests`).
+- **Inspector unit contract:** Video & Audio Effects / Role Inventory **Effects** Settings are locked to Final Cut Pro Inspector units (Position px from sequence height, Scale %, Rotation degrees, Opacity %, Blend Mode labels). Filter `param` Position (Draw Mask) is not converted. Sign `effect-settings-match-fcp-display`.
+- **Documentation sync:** Manual 11–12 / 14 / 19–20 / 22 (Inspector units table; Duplicate Frames = Source In/Out overlap; chapter-20 cross-links), Coverage, Tests READMEs, ARCHITECTURE (Mermaid Support/DuplicateFrames + EffectsCollector `inspectorPixels`), AGENT, `.cursorrules`, and GUARDRAILS Signs `effect-settings-match-fcp-display` (unit table, sequence-height formula, Draw Mask pass-through, `FCPXMLInspectorDisplayUnitsTests`) and `duplicate-frames-match-source-in-out`.
+
+### 🐛 Bug Fixes
+
+- **Transform Position Inspector pixels:** Video & Audio Effects and Role Inventory **Effects** now convert FCPXML `adjust-transform` position from sequence-height percentages into Final Cut Pro Inspector pixels (`xml × sequenceHeight / 100` on both axes). A 2048×930 timeline that stored `-8.84241 -14.0753` was previously reported as `-8.8 px, -14.1 px`; it now matches the Inspector (`-82.2 px, -130.9 px`). Conversion uses the containing `<sequence>` format, not the clip’s own format. Sign `effect-settings-match-fcp-display`.
+- **Duplicate Frames source overlap:** Role Inventory **Duplicate Frames** intersects each clip’s **Source In** + **Source Duration** with other inventoried usages of the same media resource. Retimed clips no longer inherit the whole `timeMap` as overlap (false multi-minute duplicates when Source In/Out did not overlap). Same-clip video/audio rows are not self-duplicates. Sign `duplicate-frames-match-source-in-out`.
+
+---
+
 ## [3.3.11](https://github.com/TheAcharya/OpenFCPXMLKit/releases/tag/3.3.11) - 2026-08-22
 
 ### ✨ New Features

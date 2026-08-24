@@ -37,6 +37,11 @@ extension FinalCutPro.FCPXML {
 
             let windows = projection?.windows
             let windowIndex = windows.map { ProjectionWindowIndex(windows: $0) }
+            let duplicateUsageIndex = RoleInventoryDuplicateFrames.makeIndex(
+                entries: resolvedEntries,
+                projectionWindows: windows,
+                windowIndex: windowIndex
+            )
 
             // Building a row reads the XML tree, and the Foundation backend hands back
             // autoreleased objects. Without a pool boundary per row they accumulate for the
@@ -50,6 +55,7 @@ extension FinalCutPro.FCPXML {
                             timecodeFormat: timecodeFormat,
                             projectionWindows: windows,
                             windowIndex: windowIndex,
+                            duplicateUsageIndex: duplicateUsageIndex,
                             includeScreenshots: includeScreenshots,
                             mediaBaseURL: mediaBaseURL
                         )

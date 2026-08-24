@@ -262,6 +262,14 @@ struct FCPXMLReportFormattingTests {
                     .init(name: "Brightness", value: "29")
                 ]),
                 "Exposure 34; Brightness 29"
+            ),
+            (
+                .namedValues([.init(name: "Blend Mode", value: "multiply")]),
+                "Blend Mode Multiply"
+            ),
+            (
+                .namedValues([.init(name: "Blend Mode", value: "colorDodge")]),
+                "Blend Mode Color Dodge"
             )
         ]
 

@@ -68,6 +68,8 @@ extension FinalCutPro.FCPXML {
             /// Opacity as an FCPXML `adjust-blend` amount (`0.0`–`1.0`). Format as percent × 100.
             case opacityPercent(Double)
             case conformType(String)
+            /// Transform position in Final Cut Pro Inspector pixels
+            /// (`xml × sequenceHeight / 100`). See ``TransformAdjustment/inspectorPixels(fromXMLPosition:sequenceHeight:)``.
             case transformCenter(Point)
             case transformRotation(Double)
             case transformScale(Point)

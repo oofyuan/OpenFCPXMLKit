@@ -223,8 +223,8 @@ struct FCPXMLEffectsCollectorTests {
         #expect(transforms.count == 3)
         #expect(transforms.map(\.sortOrder) == [0, 1, 2])
         if case .transformCenter(let position) = transforms[0].settings {
-            #expect(abs(position.x - 10) < 0.001)
-            #expect(abs(position.y - 20) < 0.001)
+            #expect(abs(position.x - 108) < 0.001)
+            #expect(abs(position.y - 216) < 0.001)
         } else {
             Issue.record("Expected position transform settings first")
         }
@@ -348,7 +348,7 @@ struct FCPXMLEffectsCollectorTests {
         #expect(transforms.count == 1)
         if case .transformCenter(let position) = transforms[0].settings {
             #expect(abs(position.x) < 0.001)
-            #expect(abs(position.y - 4.83871) < 0.001)
+            #expect(abs(position.y - 52.258068) < 0.001)
         } else {
             Issue.record("Expected clip-host transform position")
         }
@@ -477,7 +477,7 @@ struct FCPXMLEffectsCollectorTests {
         let transformRows = effectRows.filter {
             $0.effect == "Transform" && $0.clipName == "Resize Clip"
         }
-        #expect(transformRows.contains { $0.settings == "Position 0.0 px, 4.8 px" })
+        #expect(transformRows.contains { $0.settings == "Position 0.0 px, 52.3 px" })
         #expect(transformRows.contains { $0.settings.hasPrefix("Scale 171.0%") })
         #expect(!transformRows.contains { $0.settings.contains("Rotation 0.0") })
         
@@ -491,7 +491,7 @@ struct FCPXMLEffectsCollectorTests {
         let resizeInventory = try #require(
             inventory.selectedRoles.first { $0.clipName == "Resize Clip" }
         )
-        #expect(resizeInventory.effects.contains("Transform (Position 0.0 px, 4.8 px; Scale 171.0%)"))
+        #expect(resizeInventory.effects.contains("Transform (Position 0.0 px, 52.3 px; Scale 171.0%)"))
     }
     
     @Test("Filter inspector params skip Motion blobs and empty names")
@@ -705,6 +705,68 @@ struct FCPXMLEffectsCollectorTests {
             report.roleInventory?.selectedRoles.first { $0.clipName == "Grade Clip" }
         )
         #expect(inventory.effects.contains("Color Adjustments (Exposure 34; Brightness 29)"))
+    }
+    
+    @Test("Transform position uses sequence height, not clip format, for Inspector pixels")
+    func transformPositionUsesSequenceHeightNotClipFormat() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" frameDuration="100/2400s" width="2048" height="930" colorSpace="1-1-1 (Rec. 709)"/>
+                <format id="r3" name="FFVideoFormat2048x1152p24" frameDuration="100/2400s" width="2048" height="1152" colorSpace="1-1-1 (Rec. 709)"/>
+                <asset id="r2" name="Shot" uid="A1" start="0s" duration="5s" hasVideo="1" format="r3" videoSources="1"/>
+            </resources>
+            <library>
+                <event name="E" uid="E1">
+                    <project name="P" uid="P1">
+                        <sequence format="r1" duration="5s" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
+                            <spine>
+                                <asset-clip ref="r2" offset="0s" name="B_0015C017" duration="5s" format="r3">
+                                    <adjust-conform type="fill"/>
+                                    <adjust-transform position="-8.84241 -14.0753" scale="1.28 1.28"/>
+                                </asset-clip>
+                            </spine>
+                        </sequence>
+                    </project>
+                </event>
+            </library>
+        </fcpxml>
+        """)
+        
+        let host = try makeExtractedHost(from: fcpxml, elementName: "asset-clip")
+        let transforms = EffectsCollector.effects(on: host)
+            .filter { $0.kind == .transform }
+            .sorted { $0.sortOrder < $1.sortOrder }
+        
+        let positionEffect = try #require(transforms.first)
+        if case .transformCenter(let position) = positionEffect.settings {
+            #expect(abs(position.x - (-82.234413)) < 0.001)
+            #expect(abs(position.y - (-130.90029)) < 0.001)
+        } else {
+            Issue.record("Expected Inspector-pixel transform position")
+        }
+        #expect(
+            FinalCutPro.FCPXML.ReportFormatting.effectSettingsDisplay(for: positionEffect)
+                == "Position -82.2 px, -130.9 px"
+        )
+        
+        var options = FinalCutPro.FCPXML.ReportOptions.roleInventoryOnly
+        options.includeEffects = true
+        let report = try await fcpxml.buildReport(options: options)
+        let effectRows = try #require(report.effects?.rows)
+        #expect(effectRows.contains { $0.settings == "Position -82.2 px, -130.9 px" })
+        #expect(effectRows.contains { $0.settings == "Scale 128.0%" })
+        
+        let inventory = try #require(
+            report.roleInventory?.selectedRoles.first { $0.clipName == "B_0015C017" }
+        )
+        #expect(
+            inventory.effects.contains(
+                "Spatial Conform (Fill), Transform (Position -82.2 px, -130.9 px; Scale 128.0%)"
+            )
+        )
     }
 
     private func makeExtractedHost(

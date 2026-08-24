@@ -32,13 +32,13 @@ From the index you can reach all chapters:
 - **11** — Extraction & Media (scope, presets, inherited roles, media copy)
 - **12** — Timeline Projection (`TimelineProjector`, `MediaUsageWindow`, annotation knobs, container-bounded contained media, report project-once; inventory vs unfolded `mc-angle`)
 - **13** — Media Processing (MIME, asset validation, silence, duration, parallel I/O)
-- **14** — Typed Models (adjustments incl. Corners/Panner, filters, captions, keyframes, collections)
+- **14** — Typed Models (adjustments incl. Corners/Panner; Transform `inspectorPixels` via sequence height, filters, captions, keyframes, collections)
 - **15** — XML Extensions (OFKXMLDocument, OFKXMLElement)
 - **16** — High-Level Model (FinalCutPro.FCPXML)
 - **17** — Cross-Platform & iOS (OFKXML abstraction, Foundation vs AEXML)
 - **18** — Errors & Utilities
 - **19** — CLI (OpenFCPXMLKit-CLI)
-- **20** — Reporting, Excel & PDF Export (`--exclude-role` on every role-bearing sheet, FCP-matching Effects / inventory settings, Title Text same-line concat, Non-Std Effects & Templates, Duplicate Frames / Total footers, empty-sheet status rows, optional Screenshot — original-first / proxy fallback — + Speed Change Settings, four-row cover branding, column exclusion with semantic row colours, Projection-first sections, secondary-storyline / connected clips keep own roles, unfolded `mc-angle` interiors omitted, Speed Change one row per usage / retimed Source Duration, ReportTimecodeFormat, ReportBuildPhase, XLKit workbook, CoreGraphics PDF)
+- **20** — Reporting, Excel & PDF Export (`--exclude-role` on every role-bearing sheet, Inspector-unit Effects / inventory settings — Position px from sequence height; filter params pass-through, Title Text same-line concat, Non-Std Effects & Templates, Duplicate Frames = Source In/Out overlap / Total footers, empty-sheet status rows, optional Screenshot — original-first / proxy fallback — + Speed Change Settings, four-row cover branding, column exclusion with semantic row colours, Projection-first sections, secondary-storyline / connected clips keep own roles, unfolded `mc-angle` interiors omitted, Speed Change one row per usage / retimed Source Duration, ReportTimecodeFormat, ReportBuildPhase, XLKit workbook, CoreGraphics PDF)
 - **21** — Shot Extraction (primary stills → PNG + CSV / [csv2notion-neo](https://github.com/TheAcharya/csv2notion-neo) Notion JSON with CSV column key order; `planShots` / `--dry-run`; reject video / titles / audio)
 - **22** — Examples (workflows and code)
 
@@ -49,5 +49,5 @@ From the index you can reach all chapters:
 - **Documentation index:** [README.md](README.md)
 - **CLI reference:** [../Sources/OpenFCPXMLKitCLI/README.md](../Sources/OpenFCPXMLKitCLI/README.md)
 - **Project README:** [../README.md](../README.md)
-- **Tests:** [../Tests/README.md](../Tests/README.md) — **1244** listed tests (all Swift Testing)
+- **Tests:** [../Tests/README.md](../Tests/README.md) — **1254** listed tests (all Swift Testing)
 
