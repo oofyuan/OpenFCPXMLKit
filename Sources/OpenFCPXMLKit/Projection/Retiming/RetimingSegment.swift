@@ -208,6 +208,24 @@ extension FinalCutPro.FCPXML {
             return current
         }
 
+        /// Composes a child through nested container layers, where each inner array contains
+        /// alternative segments from one container's timeMap rather than additional nesting.
+        static func composing(
+            parentLayers: [[RetimingSegment]],
+            child: RetimingSegment
+        ) -> [RetimingSegment] {
+            guard !parentLayers.isEmpty else { return [child] }
+            var current = [child]
+            for layer in parentLayers.reversed() {
+                current = current.flatMap { childSegment in
+                    layer.flatMap { parentSegment in
+                        composing(parent: parentSegment, child: childSegment)
+                    }
+                }
+            }
+            return current
+        }
+
         /// Composes every child through the parent chain (outermost → innermost).
         ///
         /// Useful when both a container and a nested clip expose multi-point ``TimeMap``

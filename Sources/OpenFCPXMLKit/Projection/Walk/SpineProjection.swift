@@ -21,7 +21,7 @@ extension FinalCutPro.FCPXML {
             _ elements: [any OFKXMLElement],
             resources: (any OFKXMLElement)?,
             ancestors: [any OFKXMLElement] = [],
-            parentRetimings: [RetimingSegment] = [],
+            parentRetimings: [[RetimingSegment]] = [],
             lanePath: LanePath,
             parentAbsoluteStart: Fraction,
             parentLocalStart: Fraction?,
@@ -29,7 +29,7 @@ extension FinalCutPro.FCPXML {
             options: TimelineProjectionOptions,
             onWindow: (MediaUsageWindow) throws -> Void,
             depth: Int = 0,
-            contentBound: RetimingSegment? = nil
+            contentRetimings: [RetimingSegment] = []
         ) throws {
             // Guard against pathological nesting (cyclic media refs, etc.).
             guard depth < 64 else { return }
@@ -49,7 +49,7 @@ extension FinalCutPro.FCPXML {
                         parentRetimings: retimings(
                             parentRetimings,
                             boundingContent: element,
-                            with: contentBound
+                            with: contentRetimings
                         ),
                         lanePath: lanePath,
                         parentAbsoluteStart: parentAbsoluteStart,
@@ -63,7 +63,7 @@ extension FinalCutPro.FCPXML {
             }
         }
 
-        /// Adds a container's span to the retiming chain for the content it encloses.
+        /// Adds a container's mapping layer to the retiming chain for the content it encloses.
         ///
         /// A contained child may declare a longer span than the container that holds it —
         /// Final Cut Pro writes the whole source length on the `<audio>` inside a trimmed
@@ -71,25 +71,55 @@ extension FinalCutPro.FCPXML {
         /// children (those carrying a `lane`) are connected clips rather than content, so they
         /// keep their own extent, which is how `_fcpEffectiveOcclusion` reads the same tree.
         private static func retimings(
-            _ parentRetimings: [RetimingSegment],
+            _ parentRetimings: [[RetimingSegment]],
             boundingContent element: any OFKXMLElement,
-            with contentBound: RetimingSegment?
-        ) -> [RetimingSegment] {
-            guard let contentBound, element.fcpLane == nil else { return parentRetimings }
-            return parentRetimings + [contentBound]
+            with contentRetimings: [RetimingSegment]
+        ) -> [[RetimingSegment]] {
+            guard !contentRetimings.isEmpty, element.fcpLane == nil else { return parentRetimings }
+            return parentRetimings + [contentRetimings]
         }
 
-        /// Identity span a container imposes on the content nested inside it.
-        private static func contentBound(
+        /// Timeline-to-content mappings a container imposes on the content nested inside it.
+        private static func contentRetimings(
             for element: any OFKXMLElement,
             absoluteStart: Fraction
-        ) -> RetimingSegment? {
-            guard let duration = element.fcpDuration else { return nil }
-            return RetimingSegment.identity(
-                timelineStart: absoluteStart,
-                duration: duration,
+        ) -> [RetimingSegment] {
+            guard let duration = element.fcpDuration else { return [] }
+
+            guard let clip = element.fcpAsClip else {
+                return [
+                    RetimingSegment.identity(
+                        timelineStart: absoluteStart,
+                        duration: duration,
+                        mediaStart: absoluteStart
+                    )
+                ]
+            }
+
+            let segments = ClipRetiming.segments(
+                timeMap: clip.timeMap,
+                clipOffset: absoluteStart,
+                clipDuration: duration,
                 mediaStart: absoluteStart
             )
+            guard clip.timeMap != nil else { return segments }
+
+            // Child offsets are made absolute relative to the clip's local `start`; move the
+            // timeMap's source axis into that same coordinate space before composing leaves.
+            return segments.map { segment in
+                var segment = segment
+                segment.mediaStart = ProjectionTiming.absoluteStart(
+                    offset: segment.mediaStart,
+                    parentAbsoluteStart: absoluteStart,
+                    parentLocalStart: clip.start
+                )
+                segment.mediaEnd = ProjectionTiming.absoluteStart(
+                    offset: segment.mediaEnd,
+                    parentAbsoluteStart: absoluteStart,
+                    parentLocalStart: clip.start
+                )
+                return segment
+            }
         }
 
         private static func shouldEmitWindows(
@@ -105,7 +135,7 @@ extension FinalCutPro.FCPXML {
             _ element: any OFKXMLElement,
             resources: (any OFKXMLElement)?,
             ancestors: [any OFKXMLElement],
-            parentRetimings: [RetimingSegment],
+            parentRetimings: [[RetimingSegment]],
             lanePath: LanePath,
             parentAbsoluteStart: Fraction,
             parentLocalStart: Fraction?,
@@ -450,7 +480,7 @@ extension FinalCutPro.FCPXML {
                 options: options,
                 onWindow: onWindow,
                 depth: nextDepth,
-                contentBound: contentBound(for: element, absoluteStart: absoluteStart)
+                contentRetimings: contentRetimings(for: element, absoluteStart: absoluteStart)
             )
         }
 
@@ -458,7 +488,7 @@ extension FinalCutPro.FCPXML {
             assetClip: AssetClip,
             element: any OFKXMLElement,
             ancestors: [any OFKXMLElement],
-            parentRetimings: [RetimingSegment],
+            parentRetimings: [[RetimingSegment]],
             resources: (any OFKXMLElement)?,
             lanePath: LanePath,
             absoluteStart: Fraction,
@@ -516,7 +546,7 @@ extension FinalCutPro.FCPXML {
             video: Video,
             element: any OFKXMLElement,
             ancestors: [any OFKXMLElement],
-            parentRetimings: [RetimingSegment],
+            parentRetimings: [[RetimingSegment]],
             resources: (any OFKXMLElement)?,
             lanePath: LanePath,
             absoluteStart: Fraction,
@@ -566,7 +596,7 @@ extension FinalCutPro.FCPXML {
             audio: Audio,
             element: any OFKXMLElement,
             ancestors: [any OFKXMLElement],
-            parentRetimings: [RetimingSegment],
+            parentRetimings: [[RetimingSegment]],
             resources: (any OFKXMLElement)?,
             lanePath: LanePath,
             absoluteStart: Fraction,
@@ -616,7 +646,7 @@ extension FinalCutPro.FCPXML {
             channel: MediaChannel,
             lanePath: LanePath,
             retiming: RetimingSegment,
-            parentRetimings: [RetimingSegment],
+            parentRetimings: [[RetimingSegment]],
             displayName: String?,
             element: any OFKXMLElement,
             ancestors: [any OFKXMLElement],
@@ -624,7 +654,7 @@ extension FinalCutPro.FCPXML {
             options: TimelineProjectionOptions,
             onWindow: (MediaUsageWindow) throws -> Void
         ) throws {
-            let composed = RetimingSegment.composing(parents: parentRetimings, child: retiming)
+            let composed = RetimingSegment.composing(parentLayers: parentRetimings, child: retiming)
             let annotations = WindowAnnotationBuilder.annotations(
                 for: element,
                 ancestors: ancestors,

@@ -212,4 +212,73 @@ struct FCPXMLProjectionEdgeCaseCorpusTests {
         #expect(abs(nested.timelineOut.doubleValue - 6) < 0.05)
         #expect(abs(nested.retiming.scale - 2) < 0.1)
     }
+
+    @Test("Generic clip timeMap segments compose as one container layer")
+    func genericClipTimeMapSegmentsComposeAsOneContainerLayer() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+                    <asset id="r2" name="Leaf" hasVideo="1" videoSources="1" duration="60s">
+                        <media-rep kind="original-media" src="file:///tmp/leaf.mov"/>
+                    </asset>
+                </resources>
+                <library><event name="E"><project name="P">
+                    <sequence format="r1" duration="20s" tcStart="0s">
+                        <spine>
+                            <clip offset="10s" name="Container" start="30s" duration="6s">
+                                <timeMap>
+                                    <timept time="30s" value="40s" interp="linear"/>
+                                    <timept time="32s" value="44s" interp="linear"/>
+                                    <timept time="36s" value="48s" interp="linear"/>
+                                </timeMap>
+                                <video ref="r2" offset="40s" name="Leaf" start="40s" duration="8s"/>
+                            </clip>
+                        </spine>
+                    </sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let windows = try await projector.project(from: source, fcpxml: fcpxml, options: .init())
+
+        #expect(windows.count == 2)
+        #expect(windows.map(\.channel.resourceID) == ["r2", "r2"])
+        #expect(windows.map(\.timelineIn) == [Fraction(10, 1), Fraction(12, 1)])
+        #expect(windows.map(\.timelineOut) == [Fraction(12, 1), Fraction(16, 1)])
+        #expect(windows.map(\.mediaIn) == [Fraction(40, 1), Fraction(44, 1)])
+        #expect(windows.map(\.mediaOut) == [Fraction(44, 1), Fraction(48, 1)])
+    }
+
+    @Test("TimelineSample generic clip retimings retain direct asset leaves")
+    func timelineSampleGenericClipRetimingsRetainDirectAssetLeaves() async throws {
+        let fcpxml = try requireFCPXMLSample(named: "TimelineSample")
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let options = FinalCutPro.FCPXML.TimelineProjectionOptions(
+            includeDisabled: true,
+            auditions: .all,
+            mcClipAngles: .all,
+            excludeFullyOccluded: false,
+            includeAnnotations: false,
+            includeMarkerAnnotations: false,
+            includeKeywordAnnotations: false,
+            expandAllSourceChannels: true
+        )
+
+        let windows = try await projector.project(from: source, fcpxml: fcpxml, options: options)
+        let projectedIDs = Set(windows.map(\.channel.resourceID))
+        let expectedIDs: Set<String> = ["r8", "r11", "r12", "r13", "r15", "r16", "r31", "r49", "r50"]
+
+        #expect(expectedIDs.isSubset(of: projectedIDs))
+        #expect(!projectedIDs.contains("r40"))
+        for resourceID in expectedIDs {
+            let matchingWindows = windows.filter { $0.channel.resourceID == resourceID }
+            #expect(matchingWindows.count == 1)
+            #expect(matchingWindows.allSatisfy { $0.timelineOut.doubleValue > $0.timelineIn.doubleValue })
+            #expect(matchingWindows.allSatisfy { $0.mediaOut != $0.mediaIn })
+        }
+    }
 }

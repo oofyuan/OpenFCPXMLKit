@@ -21,7 +21,7 @@ extension FinalCutPro.FCPXML {
             element: any OFKXMLElement,
             resources: (any OFKXMLElement)?,
             ancestors: [any OFKXMLElement],
-            parentRetimings: [RetimingSegment],
+            parentRetimings: [[RetimingSegment]],
             lanePath: LanePath,
             absoluteStart: Fraction,
             channelFilter: ChannelKindFilter,
@@ -69,7 +69,7 @@ extension FinalCutPro.FCPXML {
                 abs($0.scale - 1) > 0.000_1 || $0.isReversed || containerSegments.count > 1
             }
             if isNonIdentity || refClip.timeMap != nil {
-                childParents.append(contentsOf: containerSegments)
+                childParents.append(containerSegments)
             }
 
             try SpineProjection.projectStoryElements(
