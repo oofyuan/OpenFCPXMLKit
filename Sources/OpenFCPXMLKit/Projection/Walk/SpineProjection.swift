@@ -79,6 +79,21 @@ extension FinalCutPro.FCPXML {
             return parentRetimings + [contentBound]
         }
 
+        /// Story children that remain eligible when a media host itself is excluded.
+        ///
+        /// Unlaned children are the disabled host's primary content and follow the host's
+        /// visibility. Lane-bearing children are independently connected timeline items, so
+        /// they continue through the normal projection walk and apply their own enabled,
+        /// selection, occlusion, channel, timing, and retiming rules.
+        private static func projectableChildren(
+            of element: any OFKXMLElement,
+            includingHost: Bool
+        ) -> [any OFKXMLElement] {
+            let children = element.fcpProjectableStoryElements
+            guard !includingHost else { return children }
+            return children.filter { ($0.fcpLane ?? 0) != 0 }
+        }
+
         /// Identity span a container imposes on the content nested inside it.
         private static func contentBound(
             for element: any OFKXMLElement,
@@ -153,8 +168,11 @@ extension FinalCutPro.FCPXML {
                         options: options,
                         emitWindows: emitWindows
                     )
+                }
+                let childElements = projectableChildren(of: element, includingHost: includeHost)
+                if !childElements.isEmpty {
                     try projectStoryElements(
-                        element.fcpProjectableStoryElements,
+                        childElements,
                         resources: resources,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
@@ -198,8 +216,11 @@ extension FinalCutPro.FCPXML {
                         options: options,
                         emitWindows: emitWindows
                     )
+                }
+                let childElements = projectableChildren(of: element, includingHost: includeHost)
+                if !childElements.isEmpty {
                     try projectStoryElements(
-                        element.fcpProjectableStoryElements,
+                        childElements,
                         resources: resources,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
@@ -240,8 +261,11 @@ extension FinalCutPro.FCPXML {
                         options: options,
                         emitWindows: emitWindows
                     )
+                }
+                let childElements = projectableChildren(of: element, includingHost: includeHost)
+                if !childElements.isEmpty {
                     try projectStoryElements(
-                        element.fcpProjectableStoryElements,
+                        childElements,
                         resources: resources,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
@@ -299,7 +323,26 @@ extension FinalCutPro.FCPXML {
             }
 
             if let mcClip = element.fcpAsMCClip {
-                guard mcClip.enabled || options.includeDisabled else { return }
+                let includeHost = mcClip.enabled || options.includeDisabled
+                guard includeHost else {
+                    try projectStoryElements(
+                        projectableChildren(of: element, includingHost: false),
+                        resources: resources,
+                        ancestors: childAncestors,
+                        parentRetimings: parentRetimings,
+                        lanePath: elementLanePath,
+                        parentAbsoluteStart: absoluteStart,
+                        parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
+                        channelFilter: ChannelKindFilter.intersecting(
+                            channelFilter,
+                            .from(srcEnable: mcClip.srcEnable)
+                        ),
+                        options: options,
+                        onWindow: onWindow,
+                        depth: nextDepth
+                    )
+                    return
+                }
                 // Host-level markers / keywords live on the mc-clip element itself; angle
                 // unfold does not visit those annotation children. Emit even when the host
                 // is occluded so connected / nested mc-clip markers reach the Markers sheet.
@@ -328,7 +371,26 @@ extension FinalCutPro.FCPXML {
             }
 
             if let refClip = element.fcpAsRefClip {
-                guard refClip.enabled || options.includeDisabled else { return }
+                let includeHost = refClip.enabled || options.includeDisabled
+                guard includeHost else {
+                    try projectStoryElements(
+                        projectableChildren(of: element, includingHost: false),
+                        resources: resources,
+                        ancestors: childAncestors,
+                        parentRetimings: parentRetimings,
+                        lanePath: elementLanePath,
+                        parentAbsoluteStart: absoluteStart,
+                        parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
+                        channelFilter: ChannelKindFilter.intersecting(
+                            channelFilter,
+                            .from(srcEnable: refClip.srcEnable)
+                        ),
+                        options: options,
+                        onWindow: onWindow,
+                        depth: nextDepth
+                    )
+                    return
+                }
                 // Host-level markers / keywords live on the ref-clip element itself;
                 // compound unfold walks the media sequence, not these annotations.
                 emitHostAnnotationsIfNeeded(
@@ -358,17 +420,19 @@ extension FinalCutPro.FCPXML {
             // Titles have no media channel but still need clip annotations (title text,
             // markers, keywords) even when they have no nested story children.
             if let title = element.fcpAsTitle {
-                guard title.enabled || options.includeDisabled else { return }
-                emitHostAnnotationsIfNeeded(
-                    element: element,
-                    ancestors: ancestors,
-                    resources: resources,
-                    absoluteStart: absoluteStart,
-                    options: options,
-                    emitWindows: emitWindows
-                )
+                let includeHost = title.enabled || options.includeDisabled
+                if includeHost {
+                    emitHostAnnotationsIfNeeded(
+                        element: element,
+                        ancestors: ancestors,
+                        resources: resources,
+                        absoluteStart: absoluteStart,
+                        options: options,
+                        emitWindows: emitWindows
+                    )
+                }
                 try projectStoryElements(
-                    title.element.fcpProjectableStoryElements,
+                    projectableChildren(of: title.element, includingHost: includeHost),
                     resources: resources,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
@@ -417,26 +481,26 @@ extension FinalCutPro.FCPXML {
                 return
             }
 
-            let childElements = element.fcpProjectableStoryElements
-            guard !childElements.isEmpty else { return }
-
             let includeSubtree: Bool = {
                 if let clip = element.fcpAsClip { return clip.enabled || options.includeDisabled }
                 if let sync = element.fcpAsSyncClip { return sync.enabled || options.includeDisabled }
                 if let gap = element.fcpAsGap { return gap.enabled || options.includeDisabled }
                 return true
             }()
-            guard includeSubtree else { return }
+            let childElements = projectableChildren(of: element, includingHost: includeSubtree)
+            guard !childElements.isEmpty else { return }
 
             // Sync-clip / clip shells may host markers and keywords without media leaves.
-            emitHostAnnotationsIfNeeded(
-                element: element,
-                ancestors: ancestors,
-                resources: resources,
-                absoluteStart: absoluteStart,
-                options: options,
-                emitWindows: emitWindows
-            )
+            if includeSubtree {
+                emitHostAnnotationsIfNeeded(
+                    element: element,
+                    ancestors: ancestors,
+                    resources: resources,
+                    absoluteStart: absoluteStart,
+                    options: options,
+                    emitWindows: emitWindows
+                )
+            }
 
             try projectStoryElements(
                 childElements,
@@ -450,7 +514,9 @@ extension FinalCutPro.FCPXML {
                 options: options,
                 onWindow: onWindow,
                 depth: nextDepth,
-                contentBound: contentBound(for: element, absoluteStart: absoluteStart)
+                contentBound: includeSubtree
+                    ? contentBound(for: element, absoluteStart: absoluteStart)
+                    : nil
             )
         }
 
