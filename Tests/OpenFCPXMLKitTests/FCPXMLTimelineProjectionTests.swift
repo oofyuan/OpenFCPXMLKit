@@ -237,6 +237,170 @@ struct FCPXMLTimelineProjectionTests {
         #expect(visibleOnly.first?.clipDisplayName == "On")
     }
 
+    @Test("Disabled generic host excludes primary media but projects exact connected media")
+    func project_DisabledGenericHost_ProjectsEnabledConnectedChildren() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="format1" frameDuration="1/25s" width="1920" height="1080"/>
+                    <asset id="host-primary" name="Host Primary" start="0s" duration="100s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/host-primary.mov"/>
+                    </asset>
+                    <asset id="connected-video" name="Connected Video" start="0s" duration="100s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/connected-video.mov"/>
+                    </asset>
+                    <asset id="connected-audio" name="Connected Audio" start="0s" duration="100s" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000">
+                        <media-rep kind="original-media" src="file:///tmp/connected-audio.wav"/>
+                    </asset>
+                    <asset id="disabled-connected" name="Disabled Connected" start="0s" duration="100s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/disabled-connected.mov"/>
+                    </asset>
+                </resources>
+                <library>
+                    <event name="Event">
+                        <project name="Project">
+                            <sequence format="format1" duration="40s" tcStart="0s">
+                                <spine>
+                                    <clip offset="20s" start="10s" duration="10s" enabled="0">
+                                        <video ref="host-primary" offset="10s" start="10s" duration="10s"/>
+                                        <video ref="connected-video" lane="1" offset="13s" start="30s" duration="2s"/>
+                                        <audio ref="connected-audio" lane="-1" offset="16s" start="40s" duration="3s"/>
+                                        <video ref="disabled-connected" lane="2" offset="11s" start="50s" duration="1s" enabled="0"/>
+                                    </clip>
+                                </spine>
+                            </sequence>
+                        </project>
+                    </event>
+                </library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let main = try await projector.project(
+            from: source,
+            fcpxml: fcpxml,
+            options: .mainTimeline
+        )
+
+        #expect(Set(main.map(\.channel.resourceID)) == ["connected-video", "connected-audio"])
+        let video = try #require(main.first { $0.channel.resourceID == "connected-video" })
+        #expect(video.channel.kind == .video)
+        #expect(video.channel.sourceIndex == 1)
+        #expect(video.lanePath.components == [1])
+        #expect(video.timelineIn == Fraction(23, 1))
+        #expect(video.timelineOut == Fraction(25, 1))
+        #expect(video.mediaIn == Fraction(30, 1))
+        #expect(video.mediaOut == Fraction(32, 1))
+
+        let audio = try #require(main.first { $0.channel.resourceID == "connected-audio" })
+        #expect(audio.channel.kind == .audio)
+        #expect(audio.channel.sourceIndex == 1)
+        #expect(audio.lanePath.components == [-1])
+        #expect(audio.timelineIn == Fraction(26, 1))
+        #expect(audio.timelineOut == Fraction(29, 1))
+        #expect(audio.mediaIn == Fraction(40, 1))
+        #expect(audio.mediaOut == Fraction(43, 1))
+
+        let coverage = try await projector.project(
+            from: source,
+            fcpxml: fcpxml,
+            options: .init(includeDisabled: true)
+        )
+        #expect(Set(coverage.map(\.channel.resourceID)) == [
+            "host-primary", "connected-video", "connected-audio", "disabled-connected",
+        ])
+        let host = try #require(coverage.first { $0.channel.resourceID == "host-primary" })
+        #expect(host.lanePath == .primary)
+        #expect(host.timelineIn == Fraction(20, 1))
+        #expect(host.timelineOut == Fraction(30, 1))
+        #expect(host.mediaIn == Fraction(10, 1))
+        #expect(host.mediaOut == Fraction(20, 1))
+
+        let disabled = try #require(coverage.first { $0.channel.resourceID == "disabled-connected" })
+        #expect(disabled.lanePath.components == [2])
+        #expect(disabled.timelineIn == Fraction(21, 1))
+        #expect(disabled.timelineOut == Fraction(22, 1))
+        #expect(disabled.mediaIn == Fraction(50, 1))
+        #expect(disabled.mediaOut == Fraction(51, 1))
+    }
+
+    @Test("Disabled asset, video, and audio hosts preserve only connected children")
+    func project_DisabledLeafHosts_ProjectOnlyConnectedChildren() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="format1" frameDuration="1/25s" width="1920" height="1080"/>
+                    <asset id="asset-host" name="Asset Host" duration="100s" hasVideo="1" videoSources="1"><media-rep kind="original-media" src="file:///tmp/asset-host.mov"/></asset>
+                    <asset id="video-host" name="Video Host" duration="100s" hasVideo="1" videoSources="1"><media-rep kind="original-media" src="file:///tmp/video-host.mov"/></asset>
+                    <asset id="audio-host" name="Audio Host" duration="100s" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/audio-host.wav"/></asset>
+                    <asset id="asset-child" name="Asset Child" duration="100s" hasVideo="1" videoSources="1"><media-rep kind="original-media" src="file:///tmp/asset-child.mov"/></asset>
+                    <asset id="video-child" name="Video Child" duration="100s" hasVideo="1" videoSources="1"><media-rep kind="original-media" src="file:///tmp/video-child.mov"/></asset>
+                    <asset id="audio-child" name="Audio Child" duration="100s" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/audio-child.wav"/></asset>
+                </resources>
+                <library>
+                    <event name="Event">
+                        <project name="Project">
+                            <sequence format="format1" duration="30s" tcStart="0s">
+                                <spine>
+                                    <asset-clip ref="asset-host" offset="0s" start="0s" duration="5s" enabled="0">
+                                        <asset-clip ref="asset-child" lane="1" offset="1s" start="10s" duration="1s"/>
+                                    </asset-clip>
+                                    <video ref="video-host" offset="10s" start="0s" duration="5s" enabled="0">
+                                        <video ref="video-child" lane="2" offset="2s" start="20s" duration="1s"/>
+                                    </video>
+                                    <audio ref="audio-host" offset="20s" start="0s" duration="5s" enabled="0">
+                                        <audio ref="audio-child" lane="-2" offset="3s" start="30s" duration="1s"/>
+                                    </audio>
+                                </spine>
+                            </sequence>
+                        </project>
+                    </event>
+                </library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let windows = try await projector.project(
+            from: source,
+            fcpxml: fcpxml,
+            options: .mainTimeline
+        )
+        #expect(Set(windows.map(\.channel.resourceID)) == [
+            "asset-child", "video-child", "audio-child",
+        ])
+
+        let asset = try #require(windows.first { $0.channel.resourceID == "asset-child" })
+        #expect(asset.channel.kind == .video)
+        #expect(asset.channel.sourceIndex == 1)
+        #expect(asset.lanePath.components == [1])
+        #expect(asset.timelineIn == Fraction(1, 1))
+        #expect(asset.timelineOut == Fraction(2, 1))
+        #expect(asset.mediaIn == Fraction(10, 1))
+        #expect(asset.mediaOut == Fraction(11, 1))
+
+        let video = try #require(windows.first { $0.channel.resourceID == "video-child" })
+        #expect(video.channel.kind == .video)
+        #expect(video.channel.sourceIndex == 1)
+        #expect(video.lanePath.components == [2])
+        #expect(video.timelineIn == Fraction(12, 1))
+        #expect(video.timelineOut == Fraction(13, 1))
+        #expect(video.mediaIn == Fraction(20, 1))
+        #expect(video.mediaOut == Fraction(21, 1))
+
+        let audio = try #require(windows.first { $0.channel.resourceID == "audio-child" })
+        #expect(audio.channel.kind == .audio)
+        #expect(audio.channel.sourceIndex == 1)
+        #expect(audio.lanePath.components == [-2])
+        #expect(audio.timelineIn == Fraction(23, 1))
+        #expect(audio.timelineOut == Fraction(24, 1))
+        #expect(audio.mediaIn == Fraction(30, 1))
+        #expect(audio.mediaOut == Fraction(31, 1))
+    }
+
     @Test("AudioOnly sample emits audio windows for spine clips")
     func project_AudioOnlySample_EmitsAudioWindowsForSpineClips() async throws {
         let fcpxml = try requireFCPXMLSample(named: "AudioOnly")
@@ -1186,4 +1350,3 @@ struct FCPXMLTimelineProjectionTests {
         }
     }
 }
-
