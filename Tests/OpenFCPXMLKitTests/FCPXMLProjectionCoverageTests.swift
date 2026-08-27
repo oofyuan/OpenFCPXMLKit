@@ -178,6 +178,80 @@ struct FCPXMLProjectionCoverageTests {
         #expect(abs(reverse.mediaDuration - 8) < 0.001)
     }
 
+    @Test("RetimingSegment composes a parent hold through child media")
+    func retimingSegmentComposesParentHold() throws {
+        let parentHold = FinalCutPro.FCPXML.RetimingSegment(
+            timelineStart: Fraction(2, 1),
+            timelineEnd: Fraction(6, 1),
+            mediaStart: Fraction(5, 1),
+            mediaEnd: Fraction(5, 1),
+            scale: 0,
+            isReversed: false
+        )
+        let child = FinalCutPro.FCPXML.RetimingSegment(
+            timelineStart: Fraction(0, 1),
+            timelineEnd: Fraction(10, 1),
+            mediaStart: Fraction(100, 1),
+            mediaEnd: Fraction(110, 1),
+            scale: 1,
+            isReversed: false
+        )
+
+        let composed = FinalCutPro.FCPXML.RetimingSegment.composing(
+            parent: parentHold,
+            child: child
+        )
+        #expect(composed.count == 1)
+        let segment = try #require(composed.first)
+        #expect(segment.timelineStart == Fraction(2, 1))
+        #expect(segment.timelineEnd == Fraction(6, 1))
+        #expect(segment.mediaStart == Fraction(105, 1))
+        #expect(segment.mediaEnd == Fraction(105, 1))
+        #expect(segment.scale == 0)
+        #expect(segment.isHold)
+    }
+
+    @Test("Nested retiming composition retains an inner hold")
+    func nestedRetimingCompositionRetainsHold() throws {
+        let outer = FinalCutPro.FCPXML.RetimingSegment(
+            timelineStart: Fraction(0, 1),
+            timelineEnd: Fraction(8, 1),
+            mediaStart: Fraction(10, 1),
+            mediaEnd: Fraction(18, 1),
+            scale: 1,
+            isReversed: false
+        )
+        let innerHold = FinalCutPro.FCPXML.RetimingSegment(
+            timelineStart: Fraction(10, 1),
+            timelineEnd: Fraction(18, 1),
+            mediaStart: Fraction(100, 1),
+            mediaEnd: Fraction(100, 1),
+            scale: 0,
+            isReversed: false
+        )
+        let leaf = FinalCutPro.FCPXML.RetimingSegment(
+            timelineStart: Fraction(90, 1),
+            timelineEnd: Fraction(110, 1),
+            mediaStart: Fraction(200, 1),
+            mediaEnd: Fraction(220, 1),
+            scale: 1,
+            isReversed: false
+        )
+
+        let composed = FinalCutPro.FCPXML.RetimingSegment.composing(
+            parentLayers: [[outer], [innerHold]],
+            child: leaf
+        )
+        #expect(composed.count == 1)
+        let segment = try #require(composed.first)
+        #expect(segment.timelineStart == .zero)
+        #expect(segment.timelineEnd == Fraction(8, 1))
+        #expect(segment.mediaStart == Fraction(210, 1))
+        #expect(segment.mediaEnd == Fraction(210, 1))
+        #expect(segment.scale == 0)
+        #expect(segment.isHold)
+    }
+
     @Test("RetimingSegment composing parents against multiple children")
     func retimingSegmentComposingParentsAgainstChildren() {
         let parent = FinalCutPro.FCPXML.RetimingSegment(
@@ -510,4 +584,3 @@ struct FCPXMLProjectionCoverageTests {
         """
     }
 }
-

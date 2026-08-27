@@ -27,9 +27,10 @@ extension FinalCutPro.FCPXML {
             self.components = components
         }
 
-        /// Returns a path with `lane` appended when non-nil; otherwise returns `self`.
+        /// Returns a path with a connected lane appended; omitted and explicit lane `0`
+        /// both remain on the primary storyline.
         public func appending(_ lane: Int?) -> LanePath {
-            guard let lane else { return self }
+            guard let lane, lane != 0 else { return self }
             return LanePath(components: components + [lane])
         }
     }

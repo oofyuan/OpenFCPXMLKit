@@ -155,6 +155,35 @@ extension FinalCutPro.FCPXML {
             parent: RetimingSegment,
             child: RetimingSegment
         ) -> [RetimingSegment] {
+            // A freeze has positive outer occupancy but a zero-width media range. Treat its
+            // fixed media point as a point lookup in the child mapping instead of applying
+            // the ordinary positive-width overlap test.
+            if parent.isHold {
+                let parentEndpoints = [
+                    parent.timelineStart,
+                    parent.timelineEnd,
+                    parent.mediaStart,
+                ]
+                guard parentEndpoints.allSatisfy(ProjectionTiming.hasUsableEndpoint),
+                      child.containsTimeline(parent.mediaStart),
+                      let childMediaPoint = child.projectedMediaPoint(
+                          forTimeline: parent.mediaStart
+                      ),
+                      ProjectionTiming.hasUsableEndpoint(childMediaPoint)
+                else { return [] }
+
+                return [
+                    RetimingSegment(
+                        timelineStart: parent.timelineStart,
+                        timelineEnd: parent.timelineEnd,
+                        mediaStart: childMediaPoint,
+                        mediaEnd: childMediaPoint,
+                        scale: 0,
+                        isReversed: false
+                    )
+                ]
+            }
+
             guard let (parentMediaLo, parentMediaHi) = ProjectionTiming.ordered(
                 parent.mediaStart,
                 parent.mediaEnd

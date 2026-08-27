@@ -75,7 +75,9 @@ extension FinalCutPro.FCPXML {
             boundingContent element: any OFKXMLElement,
             with contentRetimings: [RetimingSegment]
         ) -> [[RetimingSegment]] {
-            guard !contentRetimings.isEmpty, element.fcpLane == nil else { return parentRetimings }
+            guard !contentRetimings.isEmpty, (element.fcpLane ?? 0) == 0 else {
+                return parentRetimings
+            }
             return parentRetimings + [contentRetimings]
         }
 

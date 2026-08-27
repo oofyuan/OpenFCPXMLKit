@@ -253,6 +253,103 @@ struct FCPXMLProjectionEdgeCaseCorpusTests {
         #expect(windows.map(\.mediaOut) == [Fraction(44, 1), Fraction(48, 1)])
     }
 
+    @Test("Generic clip freeze retains its nested video leaf")
+    func genericClipFreezeRetainsNestedVideoLeaf() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+                    <asset id="r2" name="Leaf" hasVideo="1" videoSources="1" duration="60s">
+                        <media-rep kind="original-media" src="file:///tmp/frozen-leaf.mov"/>
+                    </asset>
+                </resources>
+                <library><event name="E"><project name="P">
+                    <sequence format="r1" duration="20s" tcStart="0s">
+                        <spine>
+                            <clip offset="10s" name="Frozen Container" start="30s" duration="4s">
+                                <timeMap>
+                                    <timept time="30s" value="40s" interp="linear"/>
+                                    <timept time="34s" value="40s" interp="linear"/>
+                                </timeMap>
+                                <video ref="r2" offset="40s" name="Leaf" start="40s" duration="10s"/>
+                            </clip>
+                        </spine>
+                    </sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let windows = try await projector.project(from: source, fcpxml: fcpxml, options: .init())
+        #expect(windows.count == 1)
+        let window = try #require(windows.first)
+        #expect(window.channel.resourceID == "r2")
+        #expect(window.timelineIn == Fraction(10, 1))
+        #expect(window.timelineOut == Fraction(14, 1))
+        #expect(window.mediaIn == Fraction(40, 1))
+        #expect(window.mediaOut == Fraction(40, 1))
+        #expect(window.retiming.scale == 0)
+        #expect(window.retiming.isHold)
+    }
+
+    @Test("Explicit lane zero and omitted lane share primary content retiming")
+    func explicitLaneZeroMatchesOmittedLaneRetiming() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+                    <asset id="r2" name="Leaf" hasVideo="1" videoSources="1" duration="60s">
+                        <media-rep kind="original-media" src="file:///tmp/leaf.mov"/>
+                    </asset>
+                </resources>
+                <library><event name="E">
+                    <project name="Omitted Lane"><sequence format="r1" duration="4s" tcStart="0s"><spine>
+                        <clip offset="0s" start="10s" duration="4s">
+                            <timeMap>
+                                <timept time="10s" value="20s" interp="linear"/>
+                                <timept time="14s" value="24s" interp="linear"/>
+                            </timeMap>
+                            <video ref="r2" offset="20s" start="20s" duration="4s"/>
+                        </clip>
+                    </spine></sequence></project>
+                    <project name="Explicit Lane Zero"><sequence format="r1" duration="4s" tcStart="0s"><spine>
+                        <clip offset="0s" start="10s" duration="4s">
+                            <timeMap>
+                                <timept time="10s" value="20s" interp="linear"/>
+                                <timept time="14s" value="24s" interp="linear"/>
+                            </timeMap>
+                            <video ref="r2" lane="0" offset="20s" start="20s" duration="4s"/>
+                        </clip>
+                    </spine></sequence></project>
+                </event></library>
+            </fcpxml>
+            """)
+
+        let sources = fcpxml.allReportTimelineSources()
+        let omittedSource = try #require(sources.first { $0.displayName == "Omitted Lane" })
+        let laneZeroSource = try #require(sources.first { $0.displayName == "Explicit Lane Zero" })
+        let omitted = try #require(
+            try await projector.project(from: omittedSource, fcpxml: fcpxml, options: .init()).first
+        )
+        let laneZero = try #require(
+            try await projector.project(from: laneZeroSource, fcpxml: fcpxml, options: .init()).first
+        )
+
+        #expect(omitted.channel.resourceID == laneZero.channel.resourceID)
+        #expect(omitted.timelineIn == laneZero.timelineIn)
+        #expect(omitted.timelineOut == laneZero.timelineOut)
+        #expect(omitted.mediaIn == laneZero.mediaIn)
+        #expect(omitted.mediaOut == laneZero.mediaOut)
+        #expect(omitted.retiming.scale == laneZero.retiming.scale)
+        #expect(omitted.retiming.isReversed == laneZero.retiming.isReversed)
+        #expect(omitted.lanePath == .primary)
+        #expect(laneZero.lanePath == .primary)
+    }
+
     @Test("TimelineSample generic clip retimings retain direct asset leaves")
     func timelineSampleGenericClipRetimingsRetainDirectAssetLeaves() async throws {
         let fcpxml = try requireFCPXMLSample(named: "TimelineSample")
