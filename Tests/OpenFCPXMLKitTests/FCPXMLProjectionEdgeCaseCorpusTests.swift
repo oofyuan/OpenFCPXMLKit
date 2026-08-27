@@ -270,15 +270,18 @@ struct FCPXMLProjectionEdgeCaseCorpusTests {
 
         let windows = try await projector.project(from: source, fcpxml: fcpxml, options: options)
         let projectedIDs = Set(windows.map(\.channel.resourceID))
-        let expectedIDs: Set<String> = ["r8", "r11", "r12", "r13", "r15", "r16", "r31", "r49", "r50"]
+        let expectedIDs: Set<String> = [
+            "r8", "r11", "r12", "r13", "r15", "r16", "r31", "r40", "r49", "r50",
+        ]
 
         #expect(expectedIDs.isSubset(of: projectedIDs))
-        #expect(!projectedIDs.contains("r40"))
         for resourceID in expectedIDs {
             let matchingWindows = windows.filter { $0.channel.resourceID == resourceID }
-            #expect(matchingWindows.count == 1)
-            #expect(matchingWindows.allSatisfy { $0.timelineOut.doubleValue > $0.timelineIn.doubleValue })
-            #expect(matchingWindows.allSatisfy { $0.mediaOut != $0.mediaIn })
+            #expect(!matchingWindows.isEmpty)
+            #expect(matchingWindows.allSatisfy { $0.retiming.hasUsableProjectionEndpoints })
+            #expect(matchingWindows.allSatisfy {
+                FinalCutPro.FCPXML.ProjectionTiming.compare($0.mediaIn, $0.mediaOut) != .equal
+            })
         }
     }
 }

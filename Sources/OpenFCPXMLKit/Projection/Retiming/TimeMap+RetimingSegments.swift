@@ -33,10 +33,8 @@ extension FinalCutPro.FCPXML.TimeMap {
         let first = points[0]
         let last = points[points.count - 1]
 
-        // Time differences are taken in seconds rather than as exact rationals. A conform-scaled
-        // `time` is produced by `Fraction(double:)`, so its denominator can approach 10^18, and
-        // subtracting two such values computes a least common multiple that overflows `Int`.
-        // Every difference here is consumed as a `Double` anyway.
+        // Time-map interpolation and speed summaries use seconds. Authoritative endpoints are
+        // converted back through ProjectionTiming's bounded conversion below.
         let firstTimeSeconds = first.time.doubleValue
         let mapSpanSeconds = last.time.doubleValue - firstTimeSeconds
         guard abs(mapSpanSeconds) > .ulpOfOne else { return [] }
@@ -52,31 +50,39 @@ extension FinalCutPro.FCPXML.TimeMap {
             let remappedDeltaSeconds = bTimeSeconds - aTimeSeconds
             guard abs(remappedDeltaSeconds) > .ulpOfOne else { continue }
 
-            // Double-backed placement avoids Int overflow when mixing conform-scaled
-            // Fraction(double:) values with large literal FCPXML rationals.
+            // Placement is interpolated in Double, then converted with an explicit precision
+            // and integer bound so endpoint construction cannot saturate.
             let startFraction = (aTimeSeconds - firstTimeSeconds) / mapSpanSeconds
             let endFraction = (bTimeSeconds - firstTimeSeconds) / mapSpanSeconds
             let base = clipOffset.doubleValue
             let span = clipDuration.doubleValue
-            let timelineStart = Fraction(
-                double: base + span * startFraction,
-                decimalPrecision: FinalCutPro.FCPXML.ProjectionTiming.fractionPrecision
+            guard let timelineStart = FinalCutPro.FCPXML.ProjectionTiming.fraction(
+                seconds: base + span * startFraction
+            ),
+            let timelineEnd = FinalCutPro.FCPXML.ProjectionTiming.fraction(
+                seconds: base + span * endFraction
+            ),
+            let (forwardStart, forwardEnd) = FinalCutPro.FCPXML.ProjectionTiming.ordered(
+                timelineStart,
+                timelineEnd
+            ),
+            FinalCutPro.FCPXML.ProjectionTiming.isPositiveRange(
+                start: forwardStart,
+                end: forwardEnd
             )
-            let timelineEnd = Fraction(
-                double: base + span * endFraction,
-                decimalPrecision: FinalCutPro.FCPXML.ProjectionTiming.fractionPrecision
-            )
+            else { continue }
 
             // Ensure timeline advances forward for occupancy reporting.
-            let (forwardStart, forwardEnd) = timelineStart.doubleValue <= timelineEnd.doubleValue
-                ? (timelineStart, timelineEnd)
-                : (timelineEnd, timelineStart)
-
             let mediaStart = a.originalTime
             let mediaEnd = b.originalTime
             let mediaDeltaSeconds = mediaEnd.doubleValue - mediaStart.doubleValue
-            let isReversed = mediaEnd.doubleValue < mediaStart.doubleValue
+            guard mediaDeltaSeconds.isFinite else { continue }
+            let isReversed = FinalCutPro.FCPXML.ProjectionTiming.compare(
+                mediaEnd,
+                mediaStart
+            ) == .less
             let scale = abs(mediaDeltaSeconds / remappedDeltaSeconds)
+            guard scale.isFinite else { continue }
 
             segments.append(
                 FinalCutPro.FCPXML.RetimingSegment(

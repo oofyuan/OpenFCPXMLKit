@@ -72,20 +72,37 @@ extension FinalCutPro.FCPXML {
 
         /// `true` when media does not advance over a positive timeline span (hold / freeze).
         public var isHold: Bool {
-            timelineDuration > .ulpOfOne && mediaDuration <= .ulpOfOne
+            ProjectionTiming.isPositiveRange(start: timelineStart, end: timelineEnd)
+                && ProjectionTiming.compare(mediaStart, mediaEnd) == .equal
+        }
+
+        /// Whether this segment can safely become an authoritative media-usage window.
+        var hasUsableProjectionEndpoints: Bool {
+            let endpoints = [timelineStart, timelineEnd, mediaStart, mediaEnd]
+            guard endpoints.allSatisfy(ProjectionTiming.hasUsableEndpoint),
+                  scale.isFinite,
+                  ProjectionTiming.isPositiveRange(start: timelineStart, end: timelineEnd),
+                  let mediaOrdering = ProjectionTiming.compare(mediaStart, mediaEnd)
+            else { return false }
+            return mediaOrdering != .equal || scale == 0
         }
 
         /// `true` when `timeline` lies in the half-open occupancy `[timelineStart, timelineEnd)`.
         public func containsTimeline(_ timeline: Fraction) -> Bool {
-            let t = timeline.doubleValue
-            return t >= timelineStart.doubleValue && t < timelineEnd.doubleValue
+            guard let startOrder = ProjectionTiming.compare(timeline, timelineStart),
+                  let endOrder = ProjectionTiming.compare(timeline, timelineEnd)
+            else { return false }
+            return startOrder != .less && endOrder == .less
         }
 
         /// `true` when this segment’s timeline occupancy overlaps `[start, end)`.
         public func intersectsTimeline(start: Fraction, end: Fraction) -> Bool {
-            let queryStart = min(start.doubleValue, end.doubleValue)
-            let queryEnd = max(start.doubleValue, end.doubleValue)
-            return timelineStart.doubleValue < queryEnd && queryStart < timelineEnd.doubleValue
+            guard let (queryStart, queryEnd) = ProjectionTiming.ordered(start, end),
+                  ProjectionTiming.isPositiveRange(start: queryStart, end: queryEnd),
+                  let startsBeforeQueryEnd = ProjectionTiming.compare(timelineStart, queryEnd),
+                  let queryStartsBeforeEnd = ProjectionTiming.compare(queryStart, timelineEnd)
+            else { return false }
+            return startsBeforeQueryEnd == .less && queryStartsBeforeEnd == .less
         }
 
         /// Returns a copy clipped to the overlapping timeline range `[start, end)`, remapping
@@ -93,23 +110,20 @@ extension FinalCutPro.FCPXML {
         ///
         /// Returns `nil` when there is no positive overlap.
         public func clipped(toTimelineStart start: Fraction, timelineEnd end: Fraction) -> RetimingSegment? {
-            let queryStart = min(start.doubleValue, end.doubleValue)
-            let queryEnd = max(start.doubleValue, end.doubleValue)
-            let overlapLo = max(timelineStart.doubleValue, queryStart)
-            let overlapHi = min(timelineEnd.doubleValue, queryEnd)
-            guard overlapHi > overlapLo + .ulpOfOne else { return nil }
-
-            let clippedStart = Fraction(double: overlapLo)
-            let clippedEnd = Fraction(double: overlapHi)
-            let clippedMediaStart = mediaPoint(forTimeline: clippedStart)
-            let clippedMediaEnd = mediaPoint(forTimeline: clippedEnd)
+            guard let (queryStart, queryEnd) = ProjectionTiming.ordered(start, end),
+                  let clippedStart = ProjectionTiming.maximum(timelineStart, queryStart),
+                  let clippedEnd = ProjectionTiming.minimum(timelineEnd, queryEnd),
+                  ProjectionTiming.isPositiveRange(start: clippedStart, end: clippedEnd),
+                  let clippedMediaStart = projectedMediaPoint(forTimeline: clippedStart),
+                  let clippedMediaEnd = projectedMediaPoint(forTimeline: clippedEnd)
+            else { return nil }
             return RetimingSegment(
                 timelineStart: clippedStart,
                 timelineEnd: clippedEnd,
                 mediaStart: clippedMediaStart,
                 mediaEnd: clippedMediaEnd,
                 scale: scale,
-                isReversed: clippedMediaEnd.doubleValue < clippedMediaStart.doubleValue
+                isReversed: ProjectionTiming.compare(clippedMediaEnd, clippedMediaStart) == .less
             )
         }
 
@@ -141,25 +155,27 @@ extension FinalCutPro.FCPXML {
             parent: RetimingSegment,
             child: RetimingSegment
         ) -> [RetimingSegment] {
-            let parentMediaLo = min(parent.mediaStart.doubleValue, parent.mediaEnd.doubleValue)
-            let parentMediaHi = max(parent.mediaStart.doubleValue, parent.mediaEnd.doubleValue)
-            let childTimelineLo = min(child.timelineStart.doubleValue, child.timelineEnd.doubleValue)
-            let childTimelineHi = max(child.timelineStart.doubleValue, child.timelineEnd.doubleValue)
-
-            let overlapLo = max(parentMediaLo, childTimelineLo)
-            let overlapHi = min(parentMediaHi, childTimelineHi)
-            guard overlapHi > overlapLo + .ulpOfOne else { return [] }
-
-            let outerStart = parent.timelinePoint(forMedia: Fraction(double: overlapLo))
-            let outerEnd = parent.timelinePoint(forMedia: Fraction(double: overlapHi))
-            let timelineStart = min(outerStart, outerEnd)
-            let timelineEnd = max(outerStart, outerEnd)
-            guard timelineEnd.doubleValue > timelineStart.doubleValue + .ulpOfOne else { return [] }
-
-            let childMediaAtLo = child.mediaPoint(forTimeline: Fraction(double: overlapLo))
-            let childMediaAtHi = child.mediaPoint(forTimeline: Fraction(double: overlapHi))
+            guard let (parentMediaLo, parentMediaHi) = ProjectionTiming.ordered(
+                parent.mediaStart,
+                parent.mediaEnd
+            ),
+            let (childTimelineLo, childTimelineHi) = ProjectionTiming.ordered(
+                child.timelineStart,
+                child.timelineEnd
+            ),
+            let overlapLo = ProjectionTiming.maximum(parentMediaLo, childTimelineLo),
+            let overlapHi = ProjectionTiming.minimum(parentMediaHi, childTimelineHi),
+            ProjectionTiming.isPositiveRange(start: overlapLo, end: overlapHi),
+            let outerStart = parent.projectedTimelinePoint(forMedia: overlapLo),
+            let outerEnd = parent.projectedTimelinePoint(forMedia: overlapHi),
+            let (timelineStart, timelineEnd) = ProjectionTiming.ordered(outerStart, outerEnd),
+            ProjectionTiming.isPositiveRange(start: timelineStart, end: timelineEnd),
+            let childMediaAtLo = child.projectedMediaPoint(forTimeline: overlapLo),
+            let childMediaAtHi = child.projectedMediaPoint(forTimeline: overlapHi)
+            else { return [] }
 
             let composedScale = max(0, parent.scale) * max(0, child.scale)
+            guard composedScale.isFinite else { return [] }
             let composedReversed = parent.isReversed != child.isReversed
 
             return [
@@ -176,20 +192,44 @@ extension FinalCutPro.FCPXML {
 
         /// Maps a media-axis point through this segment onto the timeline axis.
         public func timelinePoint(forMedia media: Fraction) -> Fraction {
+            projectedTimelinePoint(forMedia: media) ?? timelineStart
+        }
+
+        private func projectedTimelinePoint(forMedia media: Fraction) -> Fraction? {
+            if ProjectionTiming.compare(media, mediaStart) == .equal { return timelineStart }
+            if ProjectionTiming.compare(media, mediaEnd) == .equal { return timelineEnd }
             let mediaSpan = mediaEnd.doubleValue - mediaStart.doubleValue
             let timelineSpan = timelineEnd.doubleValue - timelineStart.doubleValue
-            guard abs(mediaSpan) > .ulpOfOne else { return timelineStart }
+            guard mediaSpan.isFinite,
+                  timelineSpan.isFinite,
+                  abs(mediaSpan) > .ulpOfOne
+            else { return nil }
             let t = (media.doubleValue - mediaStart.doubleValue) / mediaSpan
-            return Fraction(double: timelineStart.doubleValue + t * timelineSpan)
+            guard t.isFinite else { return nil }
+            return ProjectionTiming.fraction(
+                seconds: timelineStart.doubleValue + t * timelineSpan
+            )
         }
 
         /// Maps a timeline-axis point through this segment onto the media axis.
         public func mediaPoint(forTimeline timeline: Fraction) -> Fraction {
+            projectedMediaPoint(forTimeline: timeline) ?? mediaStart
+        }
+
+        private func projectedMediaPoint(forTimeline timeline: Fraction) -> Fraction? {
+            if ProjectionTiming.compare(timeline, timelineStart) == .equal { return mediaStart }
+            if ProjectionTiming.compare(timeline, timelineEnd) == .equal { return mediaEnd }
             let timelineSpan = timelineEnd.doubleValue - timelineStart.doubleValue
             let mediaSpan = mediaEnd.doubleValue - mediaStart.doubleValue
-            guard abs(timelineSpan) > .ulpOfOne else { return mediaStart }
+            guard timelineSpan.isFinite,
+                  mediaSpan.isFinite,
+                  abs(timelineSpan) > .ulpOfOne
+            else { return nil }
             let t = (timeline.doubleValue - timelineStart.doubleValue) / timelineSpan
-            return Fraction(double: mediaStart.doubleValue + t * mediaSpan)
+            guard t.isFinite else { return nil }
+            return ProjectionTiming.fraction(
+                seconds: mediaStart.doubleValue + t * mediaSpan
+            )
         }
 
         /// Composes `child` through each overlapping parent segment.

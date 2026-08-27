@@ -35,15 +35,17 @@ extension FinalCutPro.FCPXML {
             )
 
             // Local anchors on the ref-clip itself.
-            try SpineProjection.projectStoryElements(
-                element.fcpProjectableStoryElements,
+            try SpineProjection.projectHostChildren(
+                of: element,
+                includingHost: true,
                 resources: resources,
                 ancestors: ancestors,
                 parentRetimings: parentRetimings,
                 lanePath: lanePath,
                 parentAbsoluteStart: absoluteStart,
                 parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
-                channelFilter: clipFilter,
+                primaryChannelFilter: clipFilter,
+                connectedChannelFilter: channelFilter,
                 options: options,
                 onWindow: onWindow,
                 depth: depth

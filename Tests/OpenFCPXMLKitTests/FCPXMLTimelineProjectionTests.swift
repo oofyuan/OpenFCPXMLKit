@@ -401,6 +401,112 @@ struct FCPXMLTimelineProjectionTests {
         #expect(audio.mediaOut == Fraction(31, 1))
     }
 
+    @Test("Asset host srcEnable does not constrain connected children")
+    func project_AssetHostSrcEnable_PreservesConnectedChannelIndependence() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="format1" frameDuration="1/25s" width="1920" height="1080"/>
+                    <asset id="host-av" name="Host AV" duration="100s" hasVideo="1" videoSources="1" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/host-av.mov"/></asset>
+                    <asset id="connected-audio" name="Connected Audio" duration="100s" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/connected-audio.wav"/></asset>
+                    <asset id="connected-video" name="Connected Video" duration="100s" hasVideo="1" videoSources="1"><media-rep kind="original-media" src="file:///tmp/connected-video.mov"/></asset>
+                    <asset id="child-av" name="Child AV" duration="100s" hasVideo="1" videoSources="1" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/child-av.mov"/></asset>
+                </resources>
+                <library><event name="Event"><project name="Project">
+                    <sequence format="format1" duration="20s" tcStart="0s"><spine>
+                        <asset-clip ref="host-av" offset="0s" start="0s" duration="4s" name="Video Host" srcEnable="video">
+                            <audio ref="connected-audio" lane="-1" offset="0s" start="10s" duration="1s" name="Audio Beside Video Host"/>
+                        </asset-clip>
+                        <asset-clip ref="host-av" offset="5s" start="0s" duration="4s" name="Audio Host" srcEnable="audio">
+                            <video ref="connected-video" lane="1" offset="0s" start="20s" duration="1s" name="Video Beside Audio Host"/>
+                        </asset-clip>
+                        <asset-clip ref="host-av" offset="10s" start="0s" duration="4s" name="Disabled Host" srcEnable="video" enabled="0">
+                            <audio ref="connected-audio" lane="-1" offset="0s" start="30s" duration="1s" name="Audio Beside Disabled Host"/>
+                        </asset-clip>
+                        <asset-clip ref="host-av" offset="15s" start="0s" duration="4s" name="Parent Host">
+                            <asset-clip ref="child-av" lane="1" offset="0s" start="40s" duration="1s" name="Child Audio Only" srcEnable="audio"/>
+                        </asset-clip>
+                    </spine></sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let main = try await projector.project(from: source, fcpxml: fcpxml, options: .mainTimeline)
+
+        #expect(main.filter { $0.clipDisplayName == "Video Host" }.map(\.channel.kind) == [.video])
+        #expect(main.filter { $0.clipDisplayName == "Audio Host" }.map(\.channel.kind) == [.audio])
+        #expect(main.filter { $0.clipDisplayName == "Audio Beside Video Host" }.map(\.channel.kind) == [.audio])
+        #expect(main.filter { $0.clipDisplayName == "Video Beside Audio Host" }.map(\.channel.kind) == [.video])
+        #expect(main.filter { $0.clipDisplayName == "Disabled Host" }.isEmpty)
+        #expect(main.filter { $0.clipDisplayName == "Audio Beside Disabled Host" }.map(\.channel.kind) == [.audio])
+        #expect(main.filter { $0.clipDisplayName == "Child Audio Only" }.map(\.channel.kind) == [.audio])
+    }
+
+    @Test("Ref and multicam srcEnable constrain internal content, not connected children")
+    func project_RefAndMCHostSrcEnable_PreservesConnectedChannelIndependence() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="format1" frameDuration="1/25s" width="1920" height="1080"/>
+                    <asset id="ref-inner" name="Ref Inner" duration="100s" hasVideo="1" videoSources="1" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/ref-inner.mov"/></asset>
+                    <asset id="mc-inner" name="MC Inner" duration="100s" hasVideo="1" videoSources="1" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/mc-inner.mov"/></asset>
+                    <asset id="connected-audio" name="Connected Audio" duration="100s" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"><media-rep kind="original-media" src="file:///tmp/connected-audio.wav"/></asset>
+                    <media id="compound" name="Compound"><sequence format="format1" duration="4s" tcStart="0s"><spine>
+                        <asset-clip ref="ref-inner" offset="0s" start="0s" duration="4s" name="Ref Internal"/>
+                    </spine></sequence></media>
+                    <media id="multicam" name="Multicam"><multicam format="format1" tcStart="0s">
+                        <mc-angle name="Angle" angleID="angle-a"><asset-clip ref="mc-inner" offset="0s" start="0s" duration="4s" name="MC Internal"/></mc-angle>
+                    </multicam></media>
+                </resources>
+                <library><event name="Event"><project name="Project">
+                    <sequence format="format1" duration="20s" tcStart="0s"><spine>
+                        <ref-clip ref="compound" offset="0s" start="0s" duration="4s" srcEnable="video">
+                            <audio ref="connected-audio" lane="-1" offset="0s" start="10s" duration="1s" name="Ref Connected Audio"/>
+                        </ref-clip>
+                        <ref-clip ref="compound" offset="5s" start="0s" duration="4s" srcEnable="video" enabled="0">
+                            <audio ref="connected-audio" lane="-1" offset="0s" start="20s" duration="1s" name="Disabled Ref Connected Audio"/>
+                        </ref-clip>
+                        <mc-clip ref="multicam" offset="10s" start="0s" duration="4s" srcEnable="video">
+                            <mc-source angleID="angle-a" srcEnable="all"/>
+                            <audio ref="connected-audio" lane="-1" offset="0s" start="30s" duration="1s" name="MC Connected Audio"/>
+                        </mc-clip>
+                        <mc-clip ref="multicam" offset="15s" start="0s" duration="4s" srcEnable="video" enabled="0">
+                            <mc-source angleID="angle-a" srcEnable="all"/>
+                            <audio ref="connected-audio" lane="-1" offset="0s" start="40s" duration="1s" name="Disabled MC Connected Audio"/>
+                        </mc-clip>
+                    </spine></sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let main = try await projector.project(from: source, fcpxml: fcpxml, options: .mainTimeline)
+
+        #expect(main.filter { $0.clipDisplayName == "Ref Internal" }.map(\.channel.kind) == [.video])
+        #expect(main.filter { $0.clipDisplayName == "Ref Connected Audio" }.map(\.channel.kind) == [.audio])
+        #expect(main.filter { $0.clipDisplayName == "Disabled Ref Connected Audio" }.map(\.channel.kind) == [.audio])
+        #expect(main.filter { $0.clipDisplayName == "MC Internal" }.map(\.channel.kind) == [.video])
+        #expect(main.filter { $0.clipDisplayName == "MC Connected Audio" }.map(\.channel.kind) == [.audio])
+        #expect(main.filter { $0.clipDisplayName == "Disabled MC Connected Audio" }.map(\.channel.kind) == [.audio])
+
+        let coverage = try await projector.project(
+            from: source,
+            fcpxml: fcpxml,
+            options: .init(includeDisabled: true, auditions: .all, mcClipAngles: .all)
+        )
+        #expect(coverage.filter { $0.clipDisplayName == "Ref Internal" }.allSatisfy {
+            $0.channel.kind == .video
+        })
+        #expect(coverage.filter { $0.clipDisplayName == "MC Internal" }.allSatisfy {
+            $0.channel.kind == .video
+        })
+    }
+
     @Test("AudioOnly sample emits audio windows for spine clips")
     func project_AudioOnlySample_EmitsAudioWindowsForSpineClips() async throws {
         let fcpxml = try requireFCPXMLSample(named: "AudioOnly")
@@ -1139,11 +1245,13 @@ struct FCPXMLTimelineProjectionTests {
     }
 
     @Test("ProjectionTiming conform-scaled parent does not trap")
-    func projectionTiming_ConformScaledParent_DoesNotTrap() {
-        // Regression: Fraction(double:) conform-scaled starts mixed with literal FCPXML
-        // rationals used to trap on Int overflow inside Fraction `+` / `-` (e.g. 24.fcpxml).
+    func projectionTiming_ConformScaledParent_DoesNotTrap() throws {
+        // Regression: conform-scaled starts mixed with literal FCPXML rationals used to trap
+        // on Int overflow inside Fraction `+` / `-` (e.g. 24.fcpxml).
         let parentAbs = Fraction(745, 6) // 298000/2400 reduced
-        let parentLocal = Fraction(double: 178.845_333_333, decimalPrecision: 18)
+        let parentLocal = try #require(FinalCutPro.FCPXML.ProjectionTiming.fraction(
+            seconds: 178.845_333_333
+        ))
         let childOffset = Fraction(571_571, 3000)
 
         let absolute = FinalCutPro.FCPXML.ProjectionTiming.absoluteStart(
@@ -1156,6 +1264,27 @@ struct FCPXMLTimelineProjectionTests {
             parentAbs.doubleValue + (childOffset.doubleValue - parentLocal.doubleValue)
         let deltaMatch = abs(absolute.doubleValue - expected) < 0.001
         #expect(deltaMatch)
+    }
+
+    @Test("ProjectionTiming bounds computed fractions without saturating endpoints")
+    func projectionTiming_BoundedFractionRejectsInvalidAndKeepsLargeEndpointsDistinct() throws {
+        let lower = try #require(FinalCutPro.FCPXML.ProjectionTiming.fraction(
+            seconds: 235.360_125_001
+        ))
+        let upper = try #require(FinalCutPro.FCPXML.ProjectionTiming.fraction(
+            seconds: 235.360_125_002
+        ))
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.compare(lower, upper) == .less)
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.hasUsableEndpoint(lower))
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.hasUsableEndpoint(upper))
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.fraction(seconds: .nan) == nil)
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.fraction(seconds: .infinity) == nil)
+
+        let rawXMLValue = Fraction(1_882_881, 8_000)
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.adding(.zero, rawXMLValue)
+            .isIdentical(to: rawXMLValue))
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.subtracting(rawXMLValue, .zero)
+            .isIdentical(to: rawXMLValue))
     }
 
     @Test("ReportOptions consumesTimelineProjection when inventory or speed enabled")

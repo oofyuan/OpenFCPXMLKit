@@ -238,7 +238,9 @@ extension OFKXMLElement {
         if scaled,
            let scalingFactor = _fcpCachedConformRateScalingFactor(includingSelf: isStartAttribute)
         {
-            return Fraction(double: base.doubleValue * scalingFactor)
+            return FinalCutPro.FCPXML.ProjectionTiming.fraction(
+                seconds: base.doubleValue * scalingFactor
+            )
         } else {
             return base
         }
@@ -259,7 +261,10 @@ extension OFKXMLElement {
            let _newValue = newValue,
            let scalingFactor = _fcpConformRateScalingFactor(includingSelf: isStartAttribute)
         {
-            newValue = Fraction(double: _newValue.doubleValue / scalingFactor)
+            guard let converted = FinalCutPro.FCPXML.ProjectionTiming.fraction(
+                seconds: _newValue.doubleValue / scalingFactor
+            ) else { return }
+            newValue = converted
         }
         
         addAttribute(

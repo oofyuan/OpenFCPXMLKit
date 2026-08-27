@@ -94,6 +94,43 @@ extension FinalCutPro.FCPXML {
             return children.filter { ($0.fcpLane ?? 0) != 0 }
         }
 
+        /// Projects a media host's local story children without leaking the host's
+        /// `srcEnable` restriction into independently connected lane items.
+        static func projectHostChildren(
+            of element: any OFKXMLElement,
+            includingHost: Bool,
+            resources: (any OFKXMLElement)?,
+            ancestors: [any OFKXMLElement],
+            parentRetimings: [[RetimingSegment]],
+            lanePath: LanePath,
+            parentAbsoluteStart: Fraction,
+            parentLocalStart: Fraction?,
+            primaryChannelFilter: ChannelKindFilter,
+            connectedChannelFilter: ChannelKindFilter,
+            options: TimelineProjectionOptions,
+            onWindow: (MediaUsageWindow) throws -> Void,
+            depth: Int
+        ) throws {
+            for child in projectableChildren(of: element, includingHost: includingHost) {
+                let filter = (child.fcpLane ?? 0) == 0
+                    ? primaryChannelFilter
+                    : connectedChannelFilter
+                try projectStoryElements(
+                    [child],
+                    resources: resources,
+                    ancestors: ancestors,
+                    parentRetimings: parentRetimings,
+                    lanePath: lanePath,
+                    parentAbsoluteStart: parentAbsoluteStart,
+                    parentLocalStart: parentLocalStart,
+                    channelFilter: filter,
+                    options: options,
+                    onWindow: onWindow,
+                    depth: depth
+                )
+            }
+        }
+
         /// Timeline-to-content mappings a container imposes on the content nested inside it.
         private static func contentRetimings(
             for element: any OFKXMLElement,
@@ -199,25 +236,24 @@ extension FinalCutPro.FCPXML {
                         emitWindows: emitWindows
                     )
                 }
-                let childElements = projectableChildren(of: element, includingHost: includeHost)
-                if !childElements.isEmpty {
-                    try projectStoryElements(
-                        childElements,
-                        resources: resources,
-                        ancestors: childAncestors,
-                        parentRetimings: parentRetimings,
-                        lanePath: elementLanePath,
-                        parentAbsoluteStart: absoluteStart,
-                        parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
-                        channelFilter: ChannelKindFilter.intersecting(
-                            channelFilter,
-                            .from(srcEnable: assetClip.srcEnable)
-                        ),
-                        options: options,
-                        onWindow: onWindow,
-                        depth: nextDepth
-                    )
-                }
+                try projectHostChildren(
+                    of: element,
+                    includingHost: includeHost,
+                    resources: resources,
+                    ancestors: childAncestors,
+                    parentRetimings: parentRetimings,
+                    lanePath: elementLanePath,
+                    parentAbsoluteStart: absoluteStart,
+                    parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
+                    primaryChannelFilter: ChannelKindFilter.intersecting(
+                        channelFilter,
+                        .from(srcEnable: assetClip.srcEnable)
+                    ),
+                    connectedChannelFilter: channelFilter,
+                    options: options,
+                    onWindow: onWindow,
+                    depth: nextDepth
+                )
                 return
             }
 
@@ -355,18 +391,20 @@ extension FinalCutPro.FCPXML {
             if let mcClip = element.fcpAsMCClip {
                 let includeHost = mcClip.enabled || options.includeDisabled
                 guard includeHost else {
-                    try projectStoryElements(
-                        projectableChildren(of: element, includingHost: false),
+                    try projectHostChildren(
+                        of: element,
+                        includingHost: false,
                         resources: resources,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
                         lanePath: elementLanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
-                        channelFilter: ChannelKindFilter.intersecting(
+                        primaryChannelFilter: ChannelKindFilter.intersecting(
                             channelFilter,
                             .from(srcEnable: mcClip.srcEnable)
                         ),
+                        connectedChannelFilter: channelFilter,
                         options: options,
                         onWindow: onWindow,
                         depth: nextDepth
@@ -403,18 +441,20 @@ extension FinalCutPro.FCPXML {
             if let refClip = element.fcpAsRefClip {
                 let includeHost = refClip.enabled || options.includeDisabled
                 guard includeHost else {
-                    try projectStoryElements(
-                        projectableChildren(of: element, includingHost: false),
+                    try projectHostChildren(
+                        of: element,
+                        includingHost: false,
                         resources: resources,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
                         lanePath: elementLanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
-                        channelFilter: ChannelKindFilter.intersecting(
+                        primaryChannelFilter: ChannelKindFilter.intersecting(
                             channelFilter,
                             .from(srcEnable: refClip.srcEnable)
                         ),
+                        connectedChannelFilter: channelFilter,
                         options: options,
                         onWindow: onWindow,
                         depth: nextDepth
@@ -726,7 +766,7 @@ extension FinalCutPro.FCPXML {
                 options: options,
                 channelKind: channel.kind
             )
-            for segment in composed {
+            for segment in composed where segment.hasUsableProjectionEndpoints {
                 try onWindow(
                     MediaUsageWindow(
                         channel: channel,
