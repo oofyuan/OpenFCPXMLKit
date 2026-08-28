@@ -760,11 +760,11 @@ struct FCPXMLTimelineProjectionTests {
             scaleEnabled: true,
             srcFrameRate: .fps29_97
         )
-        let identity = FinalCutPro.FCPXML.RetimingSegment.identity(
+        let identity = try #require(FinalCutPro.FCPXML.RetimingSegment.identity(
             timelineStart: .zero,
             duration: Fraction(10, 1),
             mediaStart: .zero
-        )
+        ))
         let adjusted = conform.applyingConform(to: identity, timelineFrameRate: .fps23_976)
 
         // NTSC 29.97 → 23.976 uses factor 1.001 from the shared conform table.
@@ -782,11 +782,11 @@ struct FCPXMLTimelineProjectionTests {
             scaleEnabled: false,
             srcFrameRate: .fps29_97
         )
-        let identity = FinalCutPro.FCPXML.RetimingSegment.identity(
+        let identity = try #require(FinalCutPro.FCPXML.RetimingSegment.identity(
             timelineStart: .zero,
             duration: Fraction(5, 1),
             mediaStart: Fraction(1, 1)
-        )
+        ))
         let adjusted = conform.applyingConform(to: identity, timelineFrameRate: .fps24)
         #expect(adjusted == identity)
     }
@@ -934,7 +934,7 @@ struct FCPXMLTimelineProjectionTests {
 
     @Test("AudioSplitRetiming with no split reuses video segments")
     func audioSplitRetiming_NoSplit_ReusesVideoSegments() throws {
-        let segments = FinalCutPro.FCPXML.AudioSplitRetiming.segments(
+        let segments = try FinalCutPro.FCPXML.AudioSplitRetiming.segments(
             timeMap: nil,
             absoluteStart: Fraction(2, 1),
             videoDuration: Fraction(5, 1),
@@ -952,7 +952,7 @@ struct FCPXMLTimelineProjectionTests {
     func audioSplitRetiming_AudioStartOnly_DefaultsDuration() throws {
         // video start=10s duration=5s at offset=2s → [2,7) media [10,15)
         // audioStart=9s only → audio timeline starts 1s earlier, duration remains 5s → [1,6)
-        let segments = FinalCutPro.FCPXML.AudioSplitRetiming.segments(
+        let segments = try FinalCutPro.FCPXML.AudioSplitRetiming.segments(
             timeMap: nil,
             absoluteStart: Fraction(2, 1),
             videoDuration: Fraction(5, 1),
@@ -1254,11 +1254,11 @@ struct FCPXMLTimelineProjectionTests {
         ))
         let childOffset = Fraction(571_571, 3000)
 
-        let absolute = FinalCutPro.FCPXML.ProjectionTiming.absoluteStart(
+        let absolute = try #require(FinalCutPro.FCPXML.ProjectionTiming.absoluteStart(
             offset: childOffset,
             parentAbsoluteStart: parentAbs,
             parentLocalStart: parentLocal
-        )
+        ))
         #expect(absolute.doubleValue > 0)
         let expected =
             parentAbs.doubleValue + (childOffset.doubleValue - parentLocal.doubleValue)
@@ -1281,10 +1281,48 @@ struct FCPXMLTimelineProjectionTests {
         #expect(FinalCutPro.FCPXML.ProjectionTiming.fraction(seconds: .infinity) == nil)
 
         let rawXMLValue = Fraction(1_882_881, 8_000)
-        #expect(FinalCutPro.FCPXML.ProjectionTiming.adding(.zero, rawXMLValue)
+        #expect(try #require(FinalCutPro.FCPXML.ProjectionTiming.adding(.zero, rawXMLValue))
             .isIdentical(to: rawXMLValue))
-        #expect(FinalCutPro.FCPXML.ProjectionTiming.subtracting(rawXMLValue, .zero)
+        #expect(try #require(FinalCutPro.FCPXML.ProjectionTiming.subtracting(rawXMLValue, .zero))
             .isIdentical(to: rawXMLValue))
+    }
+
+    @Test("ProjectionTiming affine mapping preserves exact Project 43 frame-grid endpoint")
+    func projectionTiming_AffineMappingPreservesExactFrameGridEndpoint() throws {
+        // Generic affine regression distilled from a real clip. These values belong only to the
+        // test: projection code must derive the result from the rational mapping.
+        let projected = try #require(FinalCutPro.FCPXML.ProjectionTiming.affinePoint(
+            Fraction(3003, 24_000),
+            inputStart: .zero,
+            inputEnd: Fraction(6006, 24_000),
+            outputStart: Fraction(77_192_716, 24_000),
+            outputEnd: Fraction(77_198_722, 24_000)
+        ))
+
+        #expect(projected == Fraction(77_195_719, 24_000))
+        #expect(projected.denominator == 24_000)
+    }
+
+    @Test("ProjectionTiming rejects exact results that do not fit Fraction")
+    func projectionTiming_UnrepresentableExactResultIsUnavailable() {
+        #expect(FinalCutPro.FCPXML.ProjectionTiming.adding(
+            Fraction(Int.max, 1),
+            Fraction(1, 1)
+        ) == nil)
+        #expect(FinalCutPro.FCPXML.RetimingSegment.identity(
+            timelineStart: Fraction(Int.max, 1),
+            duration: Fraction(1, 1),
+            mediaStart: .zero
+        ) == nil)
+    }
+
+    @Test("Conform-rate authoritative scale is an exact rational")
+    func projectionTiming_ConformRateScaleIsExactRational() {
+        let factor = fcpConformRateScalingFraction(
+            timelineFrameRate: .fps23_976,
+            mediaFrameRate: .fps29_97
+        )
+        #expect(factor == Fraction(1001, 1000))
     }
 
     @Test("ReportOptions consumesTimelineProjection when inventory or speed enabled")
@@ -1313,7 +1351,7 @@ struct FCPXMLTimelineProjectionTests {
     }
 
     @Test("TimelineOccupancyIndex union duration merges overlaps")
-    func timelineOccupancyIndex_UnionDurationMergesOverlaps() {
+    func timelineOccupancyIndex_UnionDurationMergesOverlaps() throws {
         let channel = FinalCutPro.FCPXML.MediaChannel(
             resourceID: "r1",
             kind: .video,
@@ -1321,12 +1359,20 @@ struct FCPXMLTimelineProjectionTests {
         )
         let a = FinalCutPro.FCPXML.MediaUsageWindow(
             channel: channel,
-            retiming: .identity(timelineStart: .zero, duration: Fraction(4, 1), mediaStart: .zero),
+            retiming: try #require(.identity(
+                timelineStart: .zero,
+                duration: Fraction(4, 1),
+                mediaStart: .zero
+            )),
             clipDisplayName: "A"
         )
         let b = FinalCutPro.FCPXML.MediaUsageWindow(
             channel: channel,
-            retiming: .identity(timelineStart: Fraction(2, 1), duration: Fraction(4, 1), mediaStart: .zero),
+            retiming: try #require(.identity(
+                timelineStart: Fraction(2, 1),
+                duration: Fraction(4, 1),
+                mediaStart: .zero
+            )),
             clipDisplayName: "B"
         )
         let index = FinalCutPro.FCPXML.TimelineOccupancyIndex(windows: [a, b])

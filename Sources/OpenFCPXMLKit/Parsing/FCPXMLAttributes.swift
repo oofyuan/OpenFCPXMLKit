@@ -236,11 +236,9 @@ extension OFKXMLElement {
         // a clip's local start will be scaled if the clip contains `conform-rate`
         let isStartAttribute = ["start" /*, "tcStart" */].contains(attributeName)
         if scaled,
-           let scalingFactor = _fcpCachedConformRateScalingFactor(includingSelf: isStartAttribute)
+           let scalingFactor = _fcpCachedConformRateScalingFraction(includingSelf: isStartAttribute)
         {
-            return FinalCutPro.FCPXML.ProjectionTiming.fraction(
-                seconds: base.doubleValue * scalingFactor
-            )
+            return FinalCutPro.FCPXML.ProjectionTiming.multiplying(base, scalingFactor)
         } else {
             return base
         }
@@ -259,10 +257,11 @@ extension OFKXMLElement {
         let isStartAttribute = ["start" /*, "tcStart" */].contains(attributeName)
         if scaled,
            let _newValue = newValue,
-           let scalingFactor = _fcpConformRateScalingFactor(includingSelf: isStartAttribute)
+           let scalingFactor = _fcpConformRateScalingFraction(includingSelf: isStartAttribute)
         {
-            guard let converted = FinalCutPro.FCPXML.ProjectionTiming.fraction(
-                seconds: _newValue.doubleValue / scalingFactor
+            guard let converted = FinalCutPro.FCPXML.ProjectionTiming.dividing(
+                _newValue,
+                scalingFactor
             ) else { return }
             newValue = converted
         }

@@ -183,7 +183,9 @@ extension FinalCutPro.FCPXML {
             guard let title = element.fcpAsTitle else { return nil }
 
             let duration = title.duration
-            let timelineOut = ProjectionTiming.adding(absoluteStart, duration)
+            guard let timelineOut = ProjectionTiming.adding(absoluteStart, duration) else {
+                return nil
+            }
 
             return WindowTitleAnnotation(
                 titleText: title.concatenatedDisplayText(),
@@ -205,7 +207,9 @@ extension FinalCutPro.FCPXML {
             guard let transition = element.fcpAsTransition else { return nil }
 
             let duration = transition.duration
-            let timelineOut = ProjectionTiming.adding(absoluteStart, duration)
+            guard let timelineOut = ProjectionTiming.adding(absoluteStart, duration) else {
+                return nil
+            }
             let placement = Transition.spinePlacement(
                 parentElement: ancestors.first,
                 breadcrumbs: ancestors
@@ -241,7 +245,9 @@ extension FinalCutPro.FCPXML {
                 mcClipAngles: options.mcClipAngles
             )
             let hostDuration = element.fcpDuration ?? .zero
-            let hostOut = ProjectionTiming.adding(absoluteStart, hostDuration)
+            guard let hostOut = ProjectionTiming.adding(absoluteStart, hostDuration) else {
+                return []
+            }
             let hostOcclusion = element._fcpEffectiveOcclusion(ancestors: ancestors)
 
             return EffectsCollector.effects(on: host).compactMap { effect in
@@ -284,13 +290,15 @@ extension FinalCutPro.FCPXML {
                 return (hostAbsoluteStart, hostAbsoluteOut)
             }
 
-            let nestedStart = ProjectionTiming.absoluteStart(
+            guard let nestedStart = ProjectionTiming.absoluteStart(
                 offset: context.element.fcpOffset,
                 parentAbsoluteStart: hostAbsoluteStart,
                 parentLocalStart: ProjectionTiming.localStartForChildren(of: hostElement)
-            )
+            ) else { return (hostAbsoluteStart, hostAbsoluteOut) }
             let nestedDuration = context.element.fcpDuration ?? (hostElement.fcpDuration ?? .zero)
-            let nestedOut = ProjectionTiming.adding(nestedStart, nestedDuration)
+            guard let nestedOut = ProjectionTiming.adding(nestedStart, nestedDuration) else {
+                return (hostAbsoluteStart, hostAbsoluteOut)
+            }
             return (nestedStart, nestedOut)
         }
 
@@ -340,8 +348,9 @@ extension FinalCutPro.FCPXML {
 
                 let sourcePosition = child._fcpGetFraction(forAttribute: "start", scaled: false)
                     ?? marker.start
-                let relative = ProjectionTiming.subtracting(sourcePosition, hostStart)
-                let timelinePosition = ProjectionTiming.adding(absoluteStart, relative)
+                guard let relative = ProjectionTiming.subtracting(sourcePosition, hostStart),
+                      let timelinePosition = ProjectionTiming.adding(absoluteStart, relative)
+                else { continue }
                 let isOutside = MarkerClipBoundary.isOutsideHostMediaRange(
                     markerStart: sourcePosition,
                     hostStart: element.fcpStart,
@@ -370,7 +379,7 @@ extension FinalCutPro.FCPXML {
         ) -> [WindowKeywordAnnotation] {
             let hostStart = element.fcpStart ?? .zero
             let hostDuration = element.fcpDuration ?? .zero
-            let hostEnd = ProjectionTiming.adding(hostStart, hostDuration)
+            guard let hostEnd = ProjectionTiming.adding(hostStart, hostDuration) else { return [] }
             let reel = element._fcpMetadataChildStringValue(forKey: .reel) ?? ""
             let scene = element._fcpMetadataChildStringValue(forKey: .scene) ?? ""
 
@@ -381,28 +390,29 @@ extension FinalCutPro.FCPXML {
                 guard let sourceStart = child._fcpGetFraction(forAttribute: "start", scaled: false)
                 else { continue }
                 let duration = child._fcpGetFraction(forAttribute: "duration", scaled: false) ?? .zero
-                let keywordEnd = ProjectionTiming.adding(sourceStart, duration)
+                guard let keywordEnd = ProjectionTiming.adding(sourceStart, duration),
+                      let visibleSourceStart = ProjectionTiming.maximum(sourceStart, hostStart),
+                      let visibleSourceEnd = ProjectionTiming.minimum(keywordEnd, hostEnd),
+                      ProjectionTiming.isPositiveRange(
+                          start: visibleSourceStart,
+                          end: visibleSourceEnd
+                      ),
+                      let visibleDuration = ProjectionTiming.subtracting(
+                          visibleSourceEnd,
+                          visibleSourceStart
+                      ),
+                      let relative = ProjectionTiming.subtracting(
+                          visibleSourceStart,
+                          hostStart
+                      ),
+                      let timelineIn = ProjectionTiming.adding(absoluteStart, relative),
+                      let timelineOut = ProjectionTiming.adding(timelineIn, visibleDuration)
+                else { continue }
 
                 // Clamp to the host's used media range (same visibility idea as Extraction's
                 // `visibleKeywordRangeOnMainTimeline`). Keywords often use `start="0s"` while
                 // the host clip's media in-point (`start`) is later — without clamping,
                 // timelineIn goes negative and report formatting drops the row.
-                let visibleSourceStart = sourceStart.doubleValue < hostStart.doubleValue
-                    ? hostStart
-                    : sourceStart
-                let visibleSourceEnd = keywordEnd.doubleValue < hostEnd.doubleValue
-                    ? keywordEnd
-                    : hostEnd
-                guard visibleSourceEnd.doubleValue > visibleSourceStart.doubleValue else { continue }
-
-                let visibleDuration = ProjectionTiming.subtracting(
-                    visibleSourceEnd,
-                    visibleSourceStart
-                )
-                let relative = ProjectionTiming.subtracting(visibleSourceStart, hostStart)
-                let timelineIn = ProjectionTiming.adding(absoluteStart, relative)
-                let timelineOut = ProjectionTiming.adding(timelineIn, visibleDuration)
-
                 result.append(
                     WindowKeywordAnnotation(
                         keyword: child.fcpValue ?? "",

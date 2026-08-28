@@ -31,22 +31,23 @@ extension FinalCutPro.FCPXML {
             clipOffset: Fraction,
             clipDuration: Fraction,
             mediaStart: Fraction
-        ) -> [RetimingSegment] {
+        ) throws -> [RetimingSegment] {
             if let timeMap {
-                let mapped = timeMap.retimingSegments(
+                let mapped = try timeMap.retimingSegments(
                     clipOffset: clipOffset,
                     clipDuration: clipDuration
                 )
                 if !mapped.isEmpty { return mapped }
             }
 
-            return [
-                RetimingSegment.identity(
-                    timelineStart: clipOffset,
-                    duration: clipDuration,
-                    mediaStart: mediaStart
-                )
-            ]
+            guard let identity = RetimingSegment.identity(
+                timelineStart: clipOffset,
+                duration: clipDuration,
+                mediaStart: mediaStart
+            ) else {
+                throw ProjectionTiming.ArithmeticError.unrepresentable
+            }
+            return [identity]
         }
     }
 }

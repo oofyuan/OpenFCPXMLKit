@@ -292,7 +292,7 @@ struct FCPXMLProjectionCoverageTests {
     }
 
     @Test("TimelineOccupancyIndex overlap preserves window order")
-    func timelineOccupancyIndexOverlapPreservesOrder() {
+    func timelineOccupancyIndexOverlapPreservesOrder() throws {
         let channel = FinalCutPro.FCPXML.MediaChannel(
             resourceID: "r1",
             kind: .video,
@@ -301,12 +301,20 @@ struct FCPXMLProjectionCoverageTests {
         // Insert later-starting window first so order ≠ start sort order.
         let late = FinalCutPro.FCPXML.MediaUsageWindow(
             channel: channel,
-            retiming: .identity(timelineStart: Fraction(5, 1), duration: Fraction(2, 1), mediaStart: .zero),
+            retiming: try #require(.identity(
+                timelineStart: Fraction(5, 1),
+                duration: Fraction(2, 1),
+                mediaStart: .zero
+            )),
             clipDisplayName: "Late"
         )
         let early = FinalCutPro.FCPXML.MediaUsageWindow(
             channel: channel,
-            retiming: .identity(timelineStart: Fraction(0, 1), duration: Fraction(10, 1), mediaStart: .zero),
+            retiming: try #require(.identity(
+                timelineStart: Fraction(0, 1),
+                duration: Fraction(10, 1),
+                mediaStart: .zero
+            )),
             clipDisplayName: "Early"
         )
         let index = FinalCutPro.FCPXML.TimelineOccupancyIndex(windows: [late, early])

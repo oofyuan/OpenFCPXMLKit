@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftTimecode
 
 extension FinalCutPro.FCPXML {
     /// Memoises derived per-element timing values for the duration of a read-only walk.
@@ -32,7 +33,7 @@ extension FinalCutPro.FCPXML {
 
         /// Cached scaling factors. The value is itself optional because "no scaling applies" is a
         /// meaningful result worth caching.
-        private var conformRateScaling: [ConformRateKey: Double?] = [:]
+        private var conformRateScaling: [ConformRateKey: Fraction?] = [:]
 
         /// Keeps cached elements alive so that `ObjectIdentifier` values cannot be recycled by a
         /// different element allocated at the same address.
@@ -44,8 +45,8 @@ extension FinalCutPro.FCPXML {
         func conformRateScalingFactor(
             for element: any OFKXMLElement,
             includingSelf: Bool,
-            compute: () -> Double?
-        ) -> Double? {
+            compute: () -> Fraction?
+        ) -> Fraction? {
             guard let backingObject = element.backingObject else { return compute() }
 
             let key = ConformRateKey(
@@ -110,12 +111,12 @@ extension OFKXMLElement {
     ///
     /// Only safe for reads that use the element's natural ancestry, which is what
     /// ``_fcpGetFraction(forAttribute:scaled:)`` does.
-    func _fcpCachedConformRateScalingFactor(includingSelf: Bool) -> Double? {
+    func _fcpCachedConformRateScalingFraction(includingSelf: Bool) -> Fraction? {
         guard let cache = FinalCutPro.FCPXML.TimingLocals.timingCache else {
-            return _fcpConformRateScalingFactor(includingSelf: includingSelf)
+            return _fcpConformRateScalingFraction(includingSelf: includingSelf)
         }
         return cache.conformRateScalingFactor(for: self, includingSelf: includingSelf) {
-            _fcpConformRateScalingFactor(includingSelf: includingSelf)
+            _fcpConformRateScalingFraction(includingSelf: includingSelf)
         }
     }
 }

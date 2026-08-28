@@ -137,20 +137,21 @@ extension FinalCutPro.FCPXML {
         private static func contentRetimings(
             for element: any OFKXMLElement,
             absoluteStart: Fraction
-        ) -> [RetimingSegment] {
+        ) throws -> [RetimingSegment] {
             guard let duration = element.fcpDuration else { return [] }
 
             guard let clip = element.fcpAsClip else {
-                return [
-                    RetimingSegment.identity(
-                        timelineStart: absoluteStart,
-                        duration: duration,
-                        mediaStart: absoluteStart
-                    )
-                ]
+                guard let identity = RetimingSegment.identity(
+                    timelineStart: absoluteStart,
+                    duration: duration,
+                    mediaStart: absoluteStart
+                ) else {
+                    throw ProjectionTiming.ArithmeticError.unrepresentable
+                }
+                return [identity]
             }
 
-            let segments = ClipRetiming.segments(
+            let segments = try ClipRetiming.segments(
                 timeMap: clip.timeMap,
                 clipOffset: absoluteStart,
                 clipDuration: duration,
@@ -160,18 +161,22 @@ extension FinalCutPro.FCPXML {
 
             // Child offsets are made absolute relative to the clip's local `start`; move the
             // timeMap's source axis into that same coordinate space before composing leaves.
-            return segments.map { segment in
+            return try segments.map { segment in
                 var segment = segment
-                segment.mediaStart = ProjectionTiming.absoluteStart(
+                guard let mediaStart = ProjectionTiming.absoluteStart(
                     offset: segment.mediaStart,
                     parentAbsoluteStart: absoluteStart,
                     parentLocalStart: clip.start
-                )
-                segment.mediaEnd = ProjectionTiming.absoluteStart(
+                ),
+                let mediaEnd = ProjectionTiming.absoluteStart(
                     offset: segment.mediaEnd,
                     parentAbsoluteStart: absoluteStart,
                     parentLocalStart: clip.start
-                )
+                ) else {
+                    throw ProjectionTiming.ArithmeticError.unrepresentable
+                }
+                segment.mediaStart = mediaStart
+                segment.mediaEnd = mediaEnd
                 return segment
             }
         }
@@ -201,11 +206,13 @@ extension FinalCutPro.FCPXML {
             let nextDepth = depth + 1
             let childAncestors = [element] + ancestors
             let elementLanePath = lanePath.appending(element.fcpLane)
-            let absoluteStart = ProjectionTiming.absoluteStart(
+            guard let absoluteStart = ProjectionTiming.absoluteStart(
                 offset: element.fcpOffset,
                 parentAbsoluteStart: parentAbsoluteStart,
                 parentLocalStart: parentLocalStart
-            )
+            ) else {
+                throw ProjectionTiming.ArithmeticError.unrepresentable
+            }
             let emitWindows = shouldEmitWindows(
                 for: element,
                 ancestors: ancestors,
@@ -586,7 +593,7 @@ extension FinalCutPro.FCPXML {
                 options: options,
                 onWindow: onWindow,
                 depth: nextDepth,
-                contentRetimings: contentRetimings(for: element, absoluteStart: absoluteStart)
+                contentRetimings: try contentRetimings(for: element, absoluteStart: absoluteStart)
             )
         }
 
@@ -618,7 +625,7 @@ extension FinalCutPro.FCPXML {
 
             let videoDuration = assetClip.duration ?? .zero
             let videoMediaStart = assetClip.start ?? asset.start ?? .zero
-            let channelSegments = AudioSplitRetiming.segments(
+            let channelSegments = try AudioSplitRetiming.segments(
                 timeMap: assetClip.timeMap,
                 absoluteStart: absoluteStart,
                 videoDuration: videoDuration,
@@ -672,7 +679,7 @@ extension FinalCutPro.FCPXML {
             guard !channels.isEmpty else { return }
 
             let mediaStart = video.start ?? asset.start ?? .zero
-            let retimings = ClipRetiming.segments(
+            let retimings = try ClipRetiming.segments(
                 timeMap: video.timeMap,
                 clipOffset: absoluteStart,
                 clipDuration: video.duration,
@@ -722,7 +729,7 @@ extension FinalCutPro.FCPXML {
             guard !channels.isEmpty else { return }
 
             let mediaStart = audio.start ?? asset.start ?? .zero
-            let retimings = ClipRetiming.segments(
+            let retimings = try ClipRetiming.segments(
                 timeMap: audio.timeMap,
                 clipOffset: absoluteStart,
                 clipDuration: audio.duration,

@@ -69,19 +69,22 @@ extension FinalCutPro.FCPXML {
 
             // Conform-scaled `time` values carry very large denominators, so an exact
             // rational subtraction here can overflow `Int` computing a common multiple.
-            let mapSpan = ProjectionTiming.subtracting(
+            guard let mapSpan = ProjectionTiming.subtracting(
                 points[points.count - 1].time,
                 points[0].time
-            ).doubleValue
+            ),
             let valueSpan = ProjectionTiming.subtracting(
                 points[points.count - 1].originalTime,
                 points[0].originalTime
-            ).doubleValue
-            guard abs(mapSpan) > Double.ulpOfOne, abs(valueSpan) > Double.ulpOfOne else {
+            ) else { return nil }
+            let mapSpanSeconds = mapSpan.doubleValue
+            let valueSpanSeconds = valueSpan.doubleValue
+            guard abs(mapSpanSeconds) > Double.ulpOfOne,
+                  abs(valueSpanSeconds) > Double.ulpOfOne else {
                 return nil
             }
 
-            let speed = abs(valueSpan / mapSpan)
+            let speed = abs(valueSpanSeconds / mapSpanSeconds)
             guard abs(speed - 1) > 0.000_1 else { return nil }
             return speed
         }

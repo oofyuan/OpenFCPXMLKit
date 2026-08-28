@@ -86,13 +86,15 @@ extension FinalCutPro.FCPXML {
             let last = points[points.count - 1]
             // Conform-scaled `time` values carry very large denominators, so an exact rational
             // subtraction here can overflow `Int` while computing a least common multiple.
-            let mapSpan = ProjectionTiming.subtracting(last.time, first.time)
+            guard let mapSpan = ProjectionTiming.subtracting(last.time, first.time) else {
+                return nil
+            }
             guard abs(mapSpan.doubleValue) > .ulpOfOne else { return nil }
 
-            let segments = timeMap.retimingSegments(
+            guard let segments = try? timeMap.retimingSegments(
                 clipOffset: .zero,
                 clipDuration: mapSpan
-            )
+            ) else { return nil }
             return retimeDisplay(
                 aggregating: segments,
                 frameSampling: timeMap.frameSampling

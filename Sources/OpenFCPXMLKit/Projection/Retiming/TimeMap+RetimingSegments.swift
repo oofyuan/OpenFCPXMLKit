@@ -26,18 +26,23 @@ extension FinalCutPro.FCPXML.TimeMap {
     func retimingSegments(
         clipOffset: Fraction,
         clipDuration: Fraction
-    ) -> [FinalCutPro.FCPXML.RetimingSegment] {
+    ) throws -> [FinalCutPro.FCPXML.RetimingSegment] {
         let points = Array(timePoints)
         guard points.count >= 2 else { return [] }
 
         let first = points[0]
         let last = points[points.count - 1]
-
-        // Time-map interpolation and speed summaries use seconds. Authoritative endpoints are
-        // converted back through ProjectionTiming's bounded conversion below.
-        let firstTimeSeconds = first.time.doubleValue
-        let mapSpanSeconds = last.time.doubleValue - firstTimeSeconds
-        guard abs(mapSpanSeconds) > .ulpOfOne else { return [] }
+        guard FinalCutPro.FCPXML.ProjectionTiming.compare(first.time, last.time) != .equal,
+              let clipEnd = FinalCutPro.FCPXML.ProjectionTiming.adding(
+                  clipOffset,
+                  clipDuration
+              )
+        else {
+            if FinalCutPro.FCPXML.ProjectionTiming.compare(first.time, last.time) == .equal {
+                return []
+            }
+            throw FinalCutPro.FCPXML.ProjectionTiming.ArithmeticError.unrepresentable
+        }
 
         var segments: [FinalCutPro.FCPXML.RetimingSegment] = []
         segments.reserveCapacity(points.count - 1)
@@ -45,22 +50,22 @@ extension FinalCutPro.FCPXML.TimeMap {
         for index in 0 ..< (points.count - 1) {
             let a = points[index]
             let b = points[index + 1]
-            let aTimeSeconds = a.time.doubleValue
-            let bTimeSeconds = b.time.doubleValue
-            let remappedDeltaSeconds = bTimeSeconds - aTimeSeconds
-            guard abs(remappedDeltaSeconds) > .ulpOfOne else { continue }
-
-            // Placement is interpolated in Double, then converted with an explicit precision
-            // and integer bound so endpoint construction cannot saturate.
-            let startFraction = (aTimeSeconds - firstTimeSeconds) / mapSpanSeconds
-            let endFraction = (bTimeSeconds - firstTimeSeconds) / mapSpanSeconds
-            let base = clipOffset.doubleValue
-            let span = clipDuration.doubleValue
-            guard let timelineStart = FinalCutPro.FCPXML.ProjectionTiming.fraction(
-                seconds: base + span * startFraction
+            guard FinalCutPro.FCPXML.ProjectionTiming.compare(a.time, b.time) != .equal else {
+                continue
+            }
+            guard let timelineStart = FinalCutPro.FCPXML.ProjectionTiming.affinePoint(
+                a.time,
+                inputStart: first.time,
+                inputEnd: last.time,
+                outputStart: clipOffset,
+                outputEnd: clipEnd
             ),
-            let timelineEnd = FinalCutPro.FCPXML.ProjectionTiming.fraction(
-                seconds: base + span * endFraction
+            let timelineEnd = FinalCutPro.FCPXML.ProjectionTiming.affinePoint(
+                b.time,
+                inputStart: first.time,
+                inputEnd: last.time,
+                outputStart: clipOffset,
+                outputEnd: clipEnd
             ),
             let (forwardStart, forwardEnd) = FinalCutPro.FCPXML.ProjectionTiming.ordered(
                 timelineStart,
@@ -70,19 +75,26 @@ extension FinalCutPro.FCPXML.TimeMap {
                 start: forwardStart,
                 end: forwardEnd
             )
-            else { continue }
+            else {
+                throw FinalCutPro.FCPXML.ProjectionTiming.ArithmeticError.unrepresentable
+            }
 
             // Ensure timeline advances forward for occupancy reporting.
             let mediaStart = a.originalTime
             let mediaEnd = b.originalTime
-            let mediaDeltaSeconds = mediaEnd.doubleValue - mediaStart.doubleValue
-            guard mediaDeltaSeconds.isFinite else { continue }
-            let isReversed = FinalCutPro.FCPXML.ProjectionTiming.compare(
+            guard let mediaOrdering = FinalCutPro.FCPXML.ProjectionTiming.compare(
                 mediaEnd,
                 mediaStart
-            ) == .less
-            let scale = abs(mediaDeltaSeconds / remappedDeltaSeconds)
-            guard scale.isFinite else { continue }
+            ) else {
+                throw FinalCutPro.FCPXML.ProjectionTiming.ArithmeticError.unrepresentable
+            }
+            let isReversed = mediaOrdering == .less
+            let scale = FinalCutPro.FCPXML.RetimingSegment.scaleMetadata(
+                timelineStart: a.time,
+                timelineEnd: b.time,
+                mediaStart: mediaStart,
+                mediaEnd: mediaEnd
+            )
 
             segments.append(
                 FinalCutPro.FCPXML.RetimingSegment(

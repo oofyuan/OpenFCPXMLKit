@@ -76,15 +76,31 @@ extension FinalCutPro.FCPXML {
                 && ProjectionTiming.compare(mediaStart, mediaEnd) == .equal
         }
 
+        /// Non-authoritative display scale derived from exact endpoints. An infinite value means
+        /// the ratio is unavailable as a finite `Double`; it never invalidates the endpoints.
+        static func scaleMetadata(
+            timelineStart: Fraction,
+            timelineEnd: Fraction,
+            mediaStart: Fraction,
+            mediaEnd: Fraction
+        ) -> Double {
+            if ProjectionTiming.compare(mediaStart, mediaEnd) == .equal { return 0 }
+            guard let timelineSpan = ProjectionTiming.subtracting(timelineEnd, timelineStart),
+                  let mediaSpan = ProjectionTiming.subtracting(mediaEnd, mediaStart),
+                  let ratio = ProjectionTiming.dividing(mediaSpan, timelineSpan)
+            else { return .infinity }
+            let value = abs(ratio.doubleValue)
+            return value.isFinite ? value : .infinity
+        }
+
         /// Whether this segment can safely become an authoritative media-usage window.
         var hasUsableProjectionEndpoints: Bool {
             let endpoints = [timelineStart, timelineEnd, mediaStart, mediaEnd]
             guard endpoints.allSatisfy(ProjectionTiming.hasUsableEndpoint),
-                  scale.isFinite,
                   ProjectionTiming.isPositiveRange(start: timelineStart, end: timelineEnd),
                   let mediaOrdering = ProjectionTiming.compare(mediaStart, mediaEnd)
             else { return false }
-            return mediaOrdering != .equal || scale == 0
+            return mediaOrdering != .equal || isHold
         }
 
         /// `true` when `timeline` lies in the half-open occupancy `[timelineStart, timelineEnd)`.
@@ -133,14 +149,15 @@ extension FinalCutPro.FCPXML {
             timelineStart: Fraction,
             duration: Fraction,
             mediaStart: Fraction
-        ) -> RetimingSegment {
-            // Use Double-backed composition: conform-scaled model fractions mixed with
-            // literal FCPXML rationals can trap on Int overflow in Fraction `+`.
-            RetimingSegment(
+        ) -> RetimingSegment? {
+            guard let timelineEnd = ProjectionTiming.adding(timelineStart, duration),
+                  let mediaEnd = ProjectionTiming.adding(mediaStart, duration)
+            else { return nil }
+            return RetimingSegment(
                 timelineStart: timelineStart,
-                timelineEnd: ProjectionTiming.adding(timelineStart, duration),
+                timelineEnd: timelineEnd,
                 mediaStart: mediaStart,
-                mediaEnd: ProjectionTiming.adding(mediaStart, duration),
+                mediaEnd: mediaEnd,
                 scale: 1,
                 isReversed: false
             )
@@ -203,8 +220,11 @@ extension FinalCutPro.FCPXML {
             let childMediaAtHi = child.projectedMediaPoint(forTimeline: overlapHi)
             else { return [] }
 
-            let composedScale = max(0, parent.scale) * max(0, child.scale)
-            guard composedScale.isFinite else { return [] }
+            let composedScale: Double = {
+                guard parent.scale.isFinite, child.scale.isFinite else { return .infinity }
+                let value = max(0, parent.scale) * max(0, child.scale)
+                return value.isFinite ? value : .infinity
+            }()
             let composedReversed = parent.isReversed != child.isReversed
 
             return [
@@ -220,44 +240,36 @@ extension FinalCutPro.FCPXML {
         }
 
         /// Maps a media-axis point through this segment onto the timeline axis.
-        public func timelinePoint(forMedia media: Fraction) -> Fraction {
-            projectedTimelinePoint(forMedia: media) ?? timelineStart
+        public func timelinePoint(forMedia media: Fraction) -> Fraction? {
+            projectedTimelinePoint(forMedia: media)
         }
 
         private func projectedTimelinePoint(forMedia media: Fraction) -> Fraction? {
             if ProjectionTiming.compare(media, mediaStart) == .equal { return timelineStart }
             if ProjectionTiming.compare(media, mediaEnd) == .equal { return timelineEnd }
-            let mediaSpan = mediaEnd.doubleValue - mediaStart.doubleValue
-            let timelineSpan = timelineEnd.doubleValue - timelineStart.doubleValue
-            guard mediaSpan.isFinite,
-                  timelineSpan.isFinite,
-                  abs(mediaSpan) > .ulpOfOne
-            else { return nil }
-            let t = (media.doubleValue - mediaStart.doubleValue) / mediaSpan
-            guard t.isFinite else { return nil }
-            return ProjectionTiming.fraction(
-                seconds: timelineStart.doubleValue + t * timelineSpan
+            return ProjectionTiming.affinePoint(
+                media,
+                inputStart: mediaStart,
+                inputEnd: mediaEnd,
+                outputStart: timelineStart,
+                outputEnd: timelineEnd
             )
         }
 
         /// Maps a timeline-axis point through this segment onto the media axis.
-        public func mediaPoint(forTimeline timeline: Fraction) -> Fraction {
-            projectedMediaPoint(forTimeline: timeline) ?? mediaStart
+        public func mediaPoint(forTimeline timeline: Fraction) -> Fraction? {
+            projectedMediaPoint(forTimeline: timeline)
         }
 
         private func projectedMediaPoint(forTimeline timeline: Fraction) -> Fraction? {
             if ProjectionTiming.compare(timeline, timelineStart) == .equal { return mediaStart }
             if ProjectionTiming.compare(timeline, timelineEnd) == .equal { return mediaEnd }
-            let timelineSpan = timelineEnd.doubleValue - timelineStart.doubleValue
-            let mediaSpan = mediaEnd.doubleValue - mediaStart.doubleValue
-            guard timelineSpan.isFinite,
-                  mediaSpan.isFinite,
-                  abs(timelineSpan) > .ulpOfOne
-            else { return nil }
-            let t = (timeline.doubleValue - timelineStart.doubleValue) / timelineSpan
-            guard t.isFinite else { return nil }
-            return ProjectionTiming.fraction(
-                seconds: mediaStart.doubleValue + t * mediaSpan
+            return ProjectionTiming.affinePoint(
+                timeline,
+                inputStart: timelineStart,
+                inputEnd: timelineEnd,
+                outputStart: mediaStart,
+                outputEnd: mediaEnd
             )
         }
 

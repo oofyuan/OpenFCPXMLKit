@@ -65,8 +65,8 @@ extension FinalCutPro.FCPXML {
             clipStartAttribute: Fraction?,
             audioStart: Fraction?,
             audioDuration: Fraction?
-        ) -> ChannelSegments {
-            let video = ClipRetiming.segments(
+        ) throws -> ChannelSegments {
+            let video = try ClipRetiming.segments(
                 timeMap: timeMap,
                 clipOffset: absoluteStart,
                 clipDuration: videoDuration,
@@ -85,11 +85,17 @@ extension FinalCutPro.FCPXML {
             let clipStart = clipStartAttribute ?? .zero
             let resolvedAudioStart = audioStart ?? clipStart
             let effectiveAudioDuration = audioDuration ?? videoDuration
+            guard let relativeAudioStart = ProjectionTiming.subtracting(
+                resolvedAudioStart,
+                clipStart
+            ),
             let audioTimelineStart = ProjectionTiming.adding(
                 absoluteStart,
-                ProjectionTiming.subtracting(resolvedAudioStart, clipStart)
-            )
-            let audio = ClipRetiming.segments(
+                relativeAudioStart
+            ) else {
+                throw ProjectionTiming.ArithmeticError.unrepresentable
+            }
+            let audio = try ClipRetiming.segments(
                 timeMap: timeMap,
                 clipOffset: audioTimelineStart,
                 clipDuration: effectiveAudioDuration,

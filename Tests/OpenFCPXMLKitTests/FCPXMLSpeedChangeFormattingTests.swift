@@ -59,12 +59,12 @@ struct FCPXMLSpeedChangeFormattingTests {
     }
 
     @Test("Identity retiming segment is not a speed change")
-    func isSpeedChange_IdentityFalse() {
-        let identity = FinalCutPro.FCPXML.RetimingSegment.identity(
+    func isSpeedChange_IdentityFalse() throws {
+        let identity = try #require(FinalCutPro.FCPXML.RetimingSegment.identity(
             timelineStart: .zero,
             duration: Fraction(1, 1),
             mediaStart: .zero
-        )
+        ))
         #expect(!SpeedChangeFormatting.isSpeedChange(identity))
     }
 
@@ -122,4 +122,3 @@ struct FCPXMLSpeedChangeFormattingTests {
         return try #require(FinalCutPro.FCPXML.TimeMap(element: element))
     }
 }
-

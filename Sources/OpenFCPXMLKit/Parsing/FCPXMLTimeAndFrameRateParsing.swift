@@ -189,6 +189,21 @@ extension OFKXMLElement {
         includingSelf: Bool,
         resources: (any OFKXMLElement)? = nil
     ) -> Double? {
+        _fcpConformRateScalingFraction(
+            ancestors: ancestors,
+            timelineFrameRate: timelineFrameRate,
+            includingSelf: includingSelf,
+            resources: resources
+        )?.doubleValue
+    }
+
+    /// Exact conform-rate factor used by authoritative timing attributes.
+    func _fcpConformRateScalingFraction<S: Sequence<any OFKXMLElement>>(
+        ancestors: S? = nil as [any OFKXMLElement]?,
+        timelineFrameRate: TimecodeFrameRate? = nil,
+        includingSelf: Bool,
+        resources: (any OFKXMLElement)? = nil
+    ) -> Fraction? {
         guard let (container, remainingAncestors) = fcpAncestorTimeline(
             ancestors: ancestors,
             includingSelf: includingSelf
@@ -217,7 +232,7 @@ extension OFKXMLElement {
         // FCPXML shouldn't request conforming between the same frame rate
         assert(timelineFrameRate != mediaFrameRate)
         
-        let scalingFactor = Self._fcpConformRateScalingFactor(
+        let scalingFactor = Self._fcpConformRateScalingFraction(
             timelineFrameRate: timelineFrameRate,
             mediaFrameRate: mediaFrameRate
         )
@@ -286,7 +301,17 @@ extension OFKXMLElement {
         timelineFrameRate: TimecodeFrameRate,
         mediaFrameRate: TimecodeFrameRate
     ) -> Double? {
-        fcpConformRateScalingFactor(
+        _fcpConformRateScalingFraction(
+            timelineFrameRate: timelineFrameRate,
+            mediaFrameRate: mediaFrameRate
+        )?.doubleValue
+    }
+
+    static func _fcpConformRateScalingFraction(
+        timelineFrameRate: TimecodeFrameRate,
+        mediaFrameRate: TimecodeFrameRate
+    ) -> Fraction? {
+        fcpConformRateScalingFraction(
             timelineFrameRate: timelineFrameRate,
             mediaFrameRate: mediaFrameRate
         )
@@ -300,8 +325,25 @@ func fcpConformRateScalingFactor(
     timelineFrameRate: TimecodeFrameRate,
     mediaFrameRate: TimecodeFrameRate
 ) -> Double? {
-    let t = timelineFrameRate.frameDuration.doubleValue
-    let m = mediaFrameRate.frameDuration.doubleValue
+    fcpConformRateScalingFraction(
+        timelineFrameRate: timelineFrameRate,
+        mediaFrameRate: mediaFrameRate
+    )?.doubleValue
+}
+
+/// Exact shared conform-rate factor for authoritative projection coordinates.
+func fcpConformRateScalingFraction(
+    timelineFrameRate: TimecodeFrameRate,
+    mediaFrameRate: TimecodeFrameRate
+) -> Fraction? {
+    let timelineOverMedia = FinalCutPro.FCPXML.ProjectionTiming.dividing(
+        timelineFrameRate.frameDuration,
+        mediaFrameRate.frameDuration
+    )
+    let mediaOverTimeline = FinalCutPro.FCPXML.ProjectionTiming.dividing(
+        mediaFrameRate.frameDuration,
+        timelineFrameRate.frameDuration
+    )
 
     // Note: some values may need verification with additional frame rates.
 
@@ -313,12 +355,12 @@ func fcpConformRateScalingFactor(
             case .fps23_976, .fps47_952:
                 switch timelineFrameRate {
                 case .fps23_976, .fps47_952: return nil
-                case .fps29_97, .fps59_94, .fps119_88: return 1 / 1.001
+                case .fps29_97, .fps59_94, .fps119_88: return Fraction(1000, 1001)
                 default: break
                 }
             case .fps29_97, .fps59_94, .fps119_88:
                 switch timelineFrameRate {
-                case .fps23_976, .fps47_952: return 1.001
+                case .fps23_976, .fps47_952: return Fraction(1001, 1000)
                 case .fps29_97, .fps59_94, .fps119_88: return nil
                 default: break
                 }
@@ -330,7 +372,7 @@ func fcpConformRateScalingFactor(
         case .ntscDrop:
             return nil
         case .whole:
-            return 1 / 1.001 // works for 60fps timeline -> 23.98 media
+            return Fraction(1000, 1001) // works for 60fps timeline -> 23.98 media
         }
 
     case .ntscColorWallTime: // 30d, 60d - not used by FCP
@@ -339,33 +381,33 @@ func fcpConformRateScalingFactor(
     case .ntscDrop: // 29.97d, 59.94d
         switch timelineFrameRate.compatibleGroup {
         case .ntscColor:
-            return t / m
+            return timelineOverMedia
         case .ntscColorWallTime:
             return nil // not used by FCP
         case .ntscDrop:
             return nil
         case .whole:
-            return t / m
+            return timelineOverMedia
         }
 
     case .whole: // 24, 25, 30, 60
         switch timelineFrameRate.compatibleGroup {
         case .ntscColor:
-            return t / m // works for 23.98 timeline -> 25 media
+            return timelineOverMedia // works for 23.98 timeline -> 25 media
         case .ntscColorWallTime:
             return nil // not used by FCP
         case .ntscDrop:
-            return m / t
+            return mediaOverTimeline
         case .whole:
             switch timelineFrameRate {
             case .fps24:
                 switch mediaFrameRate {
-                case .fps25: return t / m
+                case .fps25: return timelineOverMedia
                 default: return nil
                 }
             case .fps25:
                 switch mediaFrameRate {
-                case .fps24: return m / t // Note: experimental, needs further testing.
+                case .fps24: return mediaOverTimeline // Note: experimental, needs further testing.
                 default: return nil
                 }
             default: return nil

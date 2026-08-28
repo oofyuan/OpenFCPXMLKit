@@ -61,16 +61,13 @@ extension FinalCutPro.FCPXML {
 
             // When the ref-clip has a timeMap, children compose through it.
             var childParents = parentRetimings
-            let containerSegments = ClipRetiming.segments(
+            let containerSegments = try ClipRetiming.segments(
                 timeMap: refClip.timeMap,
                 clipOffset: absoluteStart,
                 clipDuration: duration,
                 mediaStart: mediaStart
             )
-            let isNonIdentity = containerSegments.contains {
-                abs($0.scale - 1) > 0.000_1 || $0.isReversed || containerSegments.count > 1
-            }
-            if isNonIdentity || refClip.timeMap != nil {
+            if refClip.timeMap != nil {
                 childParents.append(containerSegments)
             }
 

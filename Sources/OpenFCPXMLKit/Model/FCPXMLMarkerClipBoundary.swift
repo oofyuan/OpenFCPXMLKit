@@ -27,9 +27,11 @@ extension FinalCutPro.FCPXML {
         ) -> Bool {
             guard let hostDuration else { return false }
             let start = hostStart ?? .zero
-            let end = ProjectionTiming.adding(start, hostDuration)
-            let marker = markerStart.doubleValue
-            return marker < start.doubleValue || marker >= end.doubleValue
+            guard let end = ProjectionTiming.adding(start, hostDuration),
+                  let startOrder = ProjectionTiming.compare(markerStart, start),
+                  let endOrder = ProjectionTiming.compare(markerStart, end)
+            else { return false }
+            return startOrder == .less || endOrder != .less
         }
     }
 }
