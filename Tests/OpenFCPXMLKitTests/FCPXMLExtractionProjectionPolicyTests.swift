@@ -85,6 +85,28 @@ struct FCPXMLExtractionProjectionPolicyTests {
         )
     }
 
+    @Test("Media retention projection keeps occluded playable media on Occlusion3")
+    func mediaRetentionProjectionKeepsOccludedPlayableMediaOnOcclusion3() async throws {
+        let fcpxml = try requireFCPXMLSample(named: "Occlusion3")
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+
+        let visible = try await projector.project(
+            from: source,
+            fcpxml: fcpxml,
+            options: .mainTimeline
+        )
+        let retained = try await projector.project(
+            from: source,
+            fcpxml: fcpxml,
+            options: .mediaRetention
+        )
+
+        #expect(retained.count > visible.count)
+        #expect(Set(visible).isSubset(of: Set(retained)))
+        #expect(retained.contains { $0.channel.kind == .video })
+        #expect(retained.contains { $0.channel.kind == .audio })
+    }
+
     @Test("Titles hosts are subset of report visibility policy on Occlusion3")
     func titlesHostsAreSubsetOfReportVisibilityPolicyOnOcclusion3() async throws {
         let timeline = try requireTimelineElement(fromSampleNamed: "Occlusion3")
@@ -145,4 +167,3 @@ struct FCPXMLExtractionProjectionPolicyTests {
         #expect(effectsWith >= effectsWithout)
     }
 }
-

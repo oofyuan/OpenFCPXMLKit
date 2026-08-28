@@ -78,6 +78,22 @@ extension FinalCutPro.FCPXML {
             excludeFullyOccluded: true
         )
 
+        /// Active media needed to retain and later reconstruct a project timeline.
+        ///
+        /// Keeps only enabled content and active audition / multicam selections, expands every
+        /// source channel, and deliberately ignores visual occlusion. Occlusion remains useful for
+        /// visual reporting, but cannot prove that an asset's audio or video may be discarded.
+        public static let mediaRetention = TimelineProjectionOptions(
+            includeDisabled: false,
+            auditions: .active,
+            mcClipAngles: .active,
+            excludeFullyOccluded: false,
+            includeAnnotations: false,
+            includeMarkerAnnotations: false,
+            includeKeywordAnnotations: false,
+            expandAllSourceChannels: true
+        )
+
         /// Active-audition / active-angle track occupancy analysis.
         ///
         /// Unfolds only the active audition leaf and active multicam angles, expands all

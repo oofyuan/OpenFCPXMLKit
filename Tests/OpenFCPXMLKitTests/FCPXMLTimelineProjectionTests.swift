@@ -53,7 +53,7 @@ struct FCPXMLTimelineProjectionTests {
         let windows = try await projector.project(
             from: sources[0],
             fcpxml: fcpxml,
-            options: .init()
+            options: .mediaRetention
         )
 
         #expect(windows.count == 2)
@@ -281,7 +281,7 @@ struct FCPXMLTimelineProjectionTests {
         let main = try await projector.project(
             from: source,
             fcpxml: fcpxml,
-            options: .mainTimeline
+            options: .mediaRetention
         )
 
         #expect(Set(main.map(\.channel.resourceID)) == ["connected-video", "connected-audio"])
@@ -434,7 +434,7 @@ struct FCPXMLTimelineProjectionTests {
             """)
 
         let source = try #require(fcpxml.allReportTimelineSources().first)
-        let main = try await projector.project(from: source, fcpxml: fcpxml, options: .mainTimeline)
+        let main = try await projector.project(from: source, fcpxml: fcpxml, options: .mediaRetention)
 
         #expect(main.filter { $0.clipDisplayName == "Video Host" }.map(\.channel.kind) == [.video])
         #expect(main.filter { $0.clipDisplayName == "Audio Host" }.map(\.channel.kind) == [.audio])
@@ -984,6 +984,19 @@ struct FCPXMLTimelineProjectionTests {
         #expect(!options.excludeFullyOccluded)
     }
 
+    @Test("mediaRetention preset keeps enabled active media without visual occlusion filtering")
+    func mediaRetentionPreset_UsesRetentionPolicy() {
+        let options = FinalCutPro.FCPXML.TimelineProjectionOptions.mediaRetention
+        #expect(!options.includeDisabled)
+        #expect(options.auditions == .active)
+        #expect(options.mcClipAngles == .active)
+        #expect(!options.excludeFullyOccluded)
+        #expect(!options.includeAnnotations)
+        #expect(!options.includeMarkerAnnotations)
+        #expect(!options.includeKeywordAnnotations)
+        #expect(options.expandAllSourceChannels)
+    }
+
     // MARK: - Multicam, ref-clip, audition, video/audio leaves
 
     @Test("MC-clip active angle only emits from active angle")
@@ -1031,7 +1044,7 @@ struct FCPXMLTimelineProjectionTests {
         let active = try await projector.project(
             from: source,
             fcpxml: fcpxml,
-            options: .mainTimeline
+            options: .mediaRetention
         )
         #expect(active.count == 1)
         #expect(active[0].clipDisplayName == "CamB")
@@ -1176,7 +1189,7 @@ struct FCPXMLTimelineProjectionTests {
             """)
 
         let source = try #require(fcpxml.allReportTimelineSources().first)
-        let active = try await projector.project(from: source, fcpxml: fcpxml, options: .mainTimeline)
+        let active = try await projector.project(from: source, fcpxml: fcpxml, options: .mediaRetention)
         #expect(active.count == 1)
         #expect(active[0].clipDisplayName == "Active")
         #expect(active[0].timelineIn == Fraction(1, 1))
@@ -1219,7 +1232,7 @@ struct FCPXMLTimelineProjectionTests {
             """)
 
         let source = try #require(fcpxml.allReportTimelineSources().first)
-        let windows = try await projector.project(from: source, fcpxml: fcpxml, options: .mainTimeline)
+        let windows = try await projector.project(from: source, fcpxml: fcpxml, options: .mediaRetention)
 
         #expect(windows.count == 2)
         let video = try #require(windows.first { $0.channel.kind == .video })
