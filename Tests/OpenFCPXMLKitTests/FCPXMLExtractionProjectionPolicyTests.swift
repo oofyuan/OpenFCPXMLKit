@@ -85,8 +85,8 @@ struct FCPXMLExtractionProjectionPolicyTests {
         )
     }
 
-    @Test("Media retention projection keeps occluded playable media on Occlusion3")
-    func mediaRetentionProjectionKeepsOccludedPlayableMediaOnOcclusion3() async throws {
+    @Test("Active media usage keeps occluded playable media on Occlusion3")
+    func activeMediaUsageKeepsOccludedPlayableMediaOnOcclusion3() async throws {
         let fcpxml = try requireFCPXMLSample(named: "Occlusion3")
         let source = try #require(fcpxml.allReportTimelineSources().first)
 
@@ -98,7 +98,7 @@ struct FCPXMLExtractionProjectionPolicyTests {
         let retained = try await projector.project(
             from: source,
             fcpxml: fcpxml,
-            options: .mediaRetention
+            options: .activeMediaUsage
         )
 
         #expect(retained.count > visible.count)
