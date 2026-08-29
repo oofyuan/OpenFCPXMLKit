@@ -134,13 +134,22 @@ extension FinalCutPro.FCPXML {
         }
 
         /// Timeline-to-content mappings a container imposes on the content nested inside it.
-        private static func contentRetimings(
+        static func contentRetimings(
             for element: any OFKXMLElement,
-            absoluteStart: Fraction
+            absoluteStart: Fraction,
+            resources: (any OFKXMLElement)?
         ) throws -> [RetimingSegment] {
             guard let duration = element.fcpDuration else { return [] }
 
-            guard let clip = element.fcpAsClip else {
+            let timeMap: TimeMap?
+            let sourceLocalStart: Fraction?
+            if let clip = element.fcpAsClip {
+                timeMap = clip.timeMap
+                sourceLocalStart = clip.start
+            } else if let syncClip = element.fcpAsSyncClip {
+                timeMap = syncClip.timeMap
+                sourceLocalStart = syncClip.start
+            } else {
                 guard let identity = RetimingSegment.identity(
                     timelineStart: absoluteStart,
                     duration: duration,
@@ -151,27 +160,50 @@ extension FinalCutPro.FCPXML {
                 return [identity]
             }
 
-            let segments = try ClipRetiming.segments(
-                timeMap: clip.timeMap,
-                clipOffset: absoluteStart,
-                clipDuration: duration,
-                mediaStart: absoluteStart
+            let conformMapping = try ProjectionConformMapping.resolving(
+                for: element,
+                resources: resources
             )
-            guard clip.timeMap != nil else { return segments }
+            return try containerContentRetimings(
+                timeMap: timeMap,
+                timelineOffset: absoluteStart,
+                timelineDuration: duration,
+                sourceLocalStart: sourceLocalStart,
+                conformMapping: conformMapping
+            )
+        }
 
-            // Child offsets are made absolute relative to the clip's local `start`; move the
-            // timeMap's source axis into that same coordinate space before composing leaves.
+        /// Builds one explicit outer-timeline → contained-source mapping and moves its source
+        /// axis into the same absolute coordinate space used by nested child placement.
+        static func containerContentRetimings(
+            timeMap: TimeMap?,
+            timelineOffset: Fraction,
+            timelineDuration: Fraction,
+            sourceLocalStart: Fraction?,
+            conformMapping: ProjectionConformMapping
+        ) throws -> [RetimingSegment] {
+            let localStart = sourceLocalStart ?? .zero
+            let segments = try ClipRetiming.segments(
+                timeMap: timeMap,
+                timelineOffset: timelineOffset,
+                timelineDuration: timelineDuration,
+                sourceMediaStart: localStart,
+                conformMapping: conformMapping
+            )
+
+            // Child offsets are made absolute relative to the host's raw local `start`; move the
+            // explicit source axis into that same coordinate space before composing leaves.
             return try segments.map { segment in
                 var segment = segment
                 guard let mediaStart = ProjectionTiming.absoluteStart(
                     offset: segment.mediaStart,
-                    parentAbsoluteStart: absoluteStart,
-                    parentLocalStart: clip.start
+                    parentAbsoluteStart: timelineOffset,
+                    parentLocalStart: sourceLocalStart
                 ),
                 let mediaEnd = ProjectionTiming.absoluteStart(
                     offset: segment.mediaEnd,
-                    parentAbsoluteStart: absoluteStart,
-                    parentLocalStart: clip.start
+                    parentAbsoluteStart: timelineOffset,
+                    parentLocalStart: sourceLocalStart
                 ) else {
                     throw ProjectionTiming.ArithmeticError.unrepresentable
                 }
@@ -593,7 +625,11 @@ extension FinalCutPro.FCPXML {
                 options: options,
                 onWindow: onWindow,
                 depth: nextDepth,
-                contentRetimings: try contentRetimings(for: element, absoluteStart: absoluteStart)
+                contentRetimings: try contentRetimings(
+                    for: element,
+                    absoluteStart: absoluteStart,
+                    resources: resources
+                )
             )
         }
 
@@ -625,6 +661,10 @@ extension FinalCutPro.FCPXML {
 
             let videoDuration = assetClip.duration ?? .zero
             let videoMediaStart = assetClip.start ?? asset.start ?? .zero
+            let conformMapping = try ProjectionConformMapping.resolving(
+                for: element,
+                resources: resources
+            )
             let channelSegments = try AudioSplitRetiming.segments(
                 timeMap: assetClip.timeMap,
                 absoluteStart: absoluteStart,
@@ -632,7 +672,8 @@ extension FinalCutPro.FCPXML {
                 videoMediaStart: videoMediaStart,
                 clipStartAttribute: assetClip.start,
                 audioStart: assetClip.audioStart,
-                audioDuration: assetClip.audioDuration
+                audioDuration: assetClip.audioDuration,
+                conformMapping: conformMapping
             )
             let displayName = assetClip.name ?? asset.name
 
@@ -679,11 +720,16 @@ extension FinalCutPro.FCPXML {
             guard !channels.isEmpty else { return }
 
             let mediaStart = video.start ?? asset.start ?? .zero
+            let conformMapping = try ProjectionConformMapping.resolving(
+                for: element,
+                resources: resources
+            )
             let retimings = try ClipRetiming.segments(
                 timeMap: video.timeMap,
-                clipOffset: absoluteStart,
-                clipDuration: video.duration,
-                mediaStart: mediaStart
+                timelineOffset: absoluteStart,
+                timelineDuration: video.duration,
+                sourceMediaStart: mediaStart,
+                conformMapping: conformMapping
             )
             let displayName = video.name ?? asset.name
 
@@ -729,11 +775,16 @@ extension FinalCutPro.FCPXML {
             guard !channels.isEmpty else { return }
 
             let mediaStart = audio.start ?? asset.start ?? .zero
+            let conformMapping = try ProjectionConformMapping.resolving(
+                for: element,
+                resources: resources
+            )
             let retimings = try ClipRetiming.segments(
                 timeMap: audio.timeMap,
-                clipOffset: absoluteStart,
-                clipDuration: audio.duration,
-                mediaStart: mediaStart
+                timelineOffset: absoluteStart,
+                timelineDuration: audio.duration,
+                sourceMediaStart: mediaStart,
+                conformMapping: conformMapping
             )
             let displayName = audio.name ?? asset.name
 

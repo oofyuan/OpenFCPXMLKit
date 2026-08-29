@@ -18,36 +18,49 @@ extension FinalCutPro.FCPXML {
         /// Resolves one or more ``RetimingSegment`` values for a clip placement.
         ///
         /// Priority:
-        /// 1. ``TimeMap`` with ≥ 2 points → one segment per consecutive pair (normalized onto
-        ///    `clipOffset`…`clipOffset+clipDuration`)
-        /// 2. Otherwise a single identity segment
-        ///
-        /// - Note: Clip `offset` / `start` / `duration` from model getters already apply
-        ///   `conform-rate` scaling when present. Pass those values here; do not re-apply
-        ///   ``ConformRate/applyingConform(to:timelineFrameRate:)`` on top of scaled getters.
-        ///   Use ``ConformRate`` helpers only with unscaled fractions or to read the factor.
+        /// 1. ``TimeMap`` with ≥ 2 points explicitly maps adjusted clip-local time to original
+        ///    source-media time.
+        /// 2. Otherwise `conformMapping` maps the raw parent-timeline duration to a source-media
+        ///    duration while leaving the absolute source origin unchanged.
         static func segments(
             timeMap: TimeMap?,
-            clipOffset: Fraction,
-            clipDuration: Fraction,
-            mediaStart: Fraction
+            timelineOffset: Fraction,
+            timelineDuration: Fraction,
+            sourceMediaStart: Fraction,
+            conformMapping: ProjectionConformMapping = .identity
         ) throws -> [RetimingSegment] {
             if let timeMap {
                 let mapped = try timeMap.retimingSegments(
-                    clipOffset: clipOffset,
-                    clipDuration: clipDuration
+                    clipOffset: timelineOffset,
+                    clipDuration: timelineDuration
                 )
                 if !mapped.isEmpty { return mapped }
             }
 
-            guard let identity = RetimingSegment.identity(
-                timelineStart: clipOffset,
-                duration: clipDuration,
-                mediaStart: mediaStart
-            ) else {
+            guard let timelineEnd = ProjectionTiming.adding(
+                timelineOffset,
+                timelineDuration
+            ),
+            let sourceDuration = conformMapping.sourceDuration(
+                forTimelineDuration: timelineDuration
+            ),
+            let sourceMediaEnd = ProjectionTiming.adding(sourceMediaStart, sourceDuration)
+            else {
                 throw ProjectionTiming.ArithmeticError.unrepresentable
             }
-            return [identity]
+            return [RetimingSegment(
+                timelineStart: timelineOffset,
+                timelineEnd: timelineEnd,
+                mediaStart: sourceMediaStart,
+                mediaEnd: sourceMediaEnd,
+                scale: RetimingSegment.scaleMetadata(
+                    timelineStart: timelineOffset,
+                    timelineEnd: timelineEnd,
+                    mediaStart: sourceMediaStart,
+                    mediaEnd: sourceMediaEnd
+                ),
+                isReversed: false
+            )]
         }
     }
 }

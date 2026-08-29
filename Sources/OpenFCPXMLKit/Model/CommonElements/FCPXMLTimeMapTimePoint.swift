@@ -83,20 +83,20 @@ extension FinalCutPro.FCPXML.TimeMap.TimePoint {
     /// New adjusted clip time. (Required)
     public var time: Fraction {
         get {
-            element._fcpGetFraction(forAttribute: Attributes.time.rawValue, scaled: true) ?? .zero
+            element._fcpGetFraction(forAttribute: Attributes.time.rawValue, scaled: false) ?? .zero
         }
         nonmutating set {
-            element._fcpSet(fraction: newValue, forAttribute: Attributes.time.rawValue, scaled: true)
+            element._fcpSet(fraction: newValue, forAttribute: Attributes.time.rawValue, scaled: false)
         }
     }
     
     /// Original clip time. (Required)
     public var originalTime: Fraction {
         get { 
-            element._fcpGetFraction(forAttribute: Attributes.originalTime.rawValue, scaled: true) ?? .zero
+            element._fcpGetFraction(forAttribute: Attributes.originalTime.rawValue, scaled: false) ?? .zero
         }
         nonmutating set {
-            element._fcpSet(fraction: newValue, forAttribute: Attributes.originalTime.rawValue, scaled: true)
+            element._fcpSet(fraction: newValue, forAttribute: Attributes.originalTime.rawValue, scaled: false)
         }
     }
     
@@ -118,20 +118,20 @@ extension FinalCutPro.FCPXML.TimeMap.TimePoint {
     /// Transition in time. (Used only with smooth interpolations.)
     public var transitionInTime: Fraction? {
         get { 
-            element._fcpGetFraction(forAttribute: Attributes.transitionInTime.rawValue, scaled: true)
+            element._fcpGetFraction(forAttribute: Attributes.transitionInTime.rawValue, scaled: false)
         }
         nonmutating set {
-            element._fcpSet(fraction: newValue, forAttribute: Attributes.transitionInTime.rawValue, scaled: true)
+            element._fcpSet(fraction: newValue, forAttribute: Attributes.transitionInTime.rawValue, scaled: false)
         }
     }
     
     /// Transition out time. (Used only with smooth interpolations.)
     public var transitionOutTime: Fraction? {
         get {
-            element._fcpGetFraction(forAttribute: Attributes.transitionOutTime.rawValue, scaled: true)
+            element._fcpGetFraction(forAttribute: Attributes.transitionOutTime.rawValue, scaled: false)
         }
         nonmutating set { 
-            element._fcpSet(fraction: newValue, forAttribute: Attributes.transitionOutTime.rawValue, scaled: true)
+            element._fcpSet(fraction: newValue, forAttribute: Attributes.transitionOutTime.rawValue, scaled: false)
         }
     }
 }

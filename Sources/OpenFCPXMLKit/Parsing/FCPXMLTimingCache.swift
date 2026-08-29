@@ -109,8 +109,7 @@ extension OFKXMLElement {
     /// FCPXML: Conform-rate scaling factor for this element, memoised when a
     /// ``FinalCutPro/FCPXML/TimingCache`` is installed.
     ///
-    /// Only safe for reads that use the element's natural ancestry, which is what
-    /// ``_fcpGetFraction(forAttribute:scaled:)`` does.
+    /// Only safe for explicit projection mappings that use the element's natural ancestry.
     func _fcpCachedConformRateScalingFraction(includingSelf: Bool) -> Fraction? {
         guard let cache = FinalCutPro.FCPXML.TimingLocals.timingCache else {
             return _fcpConformRateScalingFraction(includingSelf: includingSelf)

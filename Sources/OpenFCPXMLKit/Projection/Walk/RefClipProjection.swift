@@ -57,17 +57,22 @@ extension FinalCutPro.FCPXML {
             // clip's local `start` (and sequence `tcStart` when composing further).
             let nestedLocalStart = refClip.start ?? sequence.tcStart
             let duration = refClip.duration
-            let mediaStart = nestedLocalStart ?? .zero
 
-            // When the ref-clip has a timeMap, children compose through it.
+            // A ref-clip resource sequence is stored outside the usage element's XML subtree.
+            // Carry the usage-local conform/timeMap mapping explicitly across that boundary.
             var childParents = parentRetimings
-            let containerSegments = try ClipRetiming.segments(
-                timeMap: refClip.timeMap,
-                clipOffset: absoluteStart,
-                clipDuration: duration,
-                mediaStart: mediaStart
+            let conformMapping = try ProjectionConformMapping.resolving(
+                for: element,
+                resources: resources
             )
-            if refClip.timeMap != nil {
+            if refClip.timeMap != nil || !conformMapping.isIdentity {
+                let containerSegments = try SpineProjection.containerContentRetimings(
+                    timeMap: refClip.timeMap,
+                    timelineOffset: absoluteStart,
+                    timelineDuration: duration,
+                    sourceLocalStart: nestedLocalStart,
+                    conformMapping: conformMapping
+                )
                 childParents.append(containerSegments)
             }
 

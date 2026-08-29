@@ -66,52 +66,45 @@ extension OFKXMLElement {
 // MARK: - Time Attributes
 
 extension OFKXMLElement {
-    /// FCPXML: Get or set the value of the `audioStart` attribute.
-    /// Scales value if containing clip has a `conform-rate` child element.
+    /// FCPXML: Get or set the raw value of the `audioStart` attribute.
     /// Use on `asset-clip`, `clip`, `mc-clip`, `ref-clip` or `sync-clip`.
     public var fcpAudioStart: Fraction? {
         get { _fcpGetFraction(forAttribute: "audioStart", scaled: true) }
         set { _fcpSet(fraction: newValue, forAttribute: "audioStart", scaled: true) }
     }
     
-    /// FCPXML: Get or set the value of the `audioDuration` attribute.
-    /// Scales value if containing clip has a `conform-rate` child element.
+    /// FCPXML: Get or set the raw value of the `audioDuration` attribute.
     /// Use on `asset-clip`, `clip`, `mc-clip`, `ref-clip` or `sync-clip`.
     public var fcpAudioDuration: Fraction? {
         get { _fcpGetFraction(forAttribute: "audioDuration", scaled: true) }
         set { _fcpSet(fraction: newValue, forAttribute: "audioDuration", scaled: true) }
     }
     
-    /// FCPXML: Get or set the value of the `duration` attribute.
-    /// Scales value if containing clip has a `conform-rate` child element.
+    /// FCPXML: Get or set the raw value of the `duration` attribute.
     public var fcpDuration: Fraction? {
         get { _fcpGetFraction(forAttribute: "duration", scaled: true) }
         set { _fcpSet(fraction: newValue, forAttribute: "duration", scaled: true) }
     }
     
-    /// FCPXML: Get or set the value of the `frameDuration` attribute.
-    /// Scales value if containing clip has a `conform-rate` child element.
+    /// FCPXML: Get or set the raw value of the `frameDuration` attribute.
     public var fcpFrameDuration: Fraction? {
         get { _fcpGetFraction(forAttribute: "frameDuration", scaled: true) }
         set { _fcpSet(fraction: newValue, forAttribute: "frameDuration", scaled: true) }
     }
     
-    /// FCPXML: Get or set the value of the `start` attribute.
-    /// Scales value if containing clip has a `conform-rate` child element.
+    /// FCPXML: Get or set the raw value of the `start` attribute.
     public var fcpStart: Fraction? {
         get { _fcpGetFraction(forAttribute: "start", scaled: true) }
         set { _fcpSet(fraction: newValue, forAttribute: "start", scaled: true) }
     }
     
-    /// FCPXML: Get or set the value of the `tcStart` attribute.
-    /// Scales value if containing clip has a `conform-rate` child element.
+    /// FCPXML: Get or set the raw value of the `tcStart` attribute.
     public var fcpTCStart: Fraction? {
         get { _fcpGetFraction(forAttribute: "tcStart", scaled: true) }
         set { _fcpSet(fraction: newValue, forAttribute: "tcStart", scaled: true) }
     }
     
-    /// FCPXML: Get or set the value of the `offset` attribute.
-    /// Scales value if containing clip has a `conform-rate` child element.
+    /// FCPXML: Get or set the raw value of the `offset` attribute.
     public var fcpOffset: Fraction? {
         get { _fcpGetFraction(forAttribute: "offset", scaled: true) }
         set { _fcpSet(fraction: newValue, forAttribute: "offset", scaled: true) }
@@ -223,7 +216,10 @@ extension OFKXMLElement {
 // MARK: - Internal Helpers
 
 extension OFKXMLElement {
-    /// FCPXML: Get an attribute time value as a `Fraction` instance.
+    /// FCPXML: Get an attribute's raw time value as a `Fraction` instance.
+    ///
+    /// `scaled` is retained as a source-compatible implementation detail. Conform-rate is a
+    /// projection mapping, not an attribute decoding rule, so it is deliberately ignored here.
     func _fcpGetFraction(
         forAttribute attributeName: String,
         scaled: Bool
@@ -232,16 +228,8 @@ extension OFKXMLElement {
               let base = Fraction(fcpxmlTimeString: value)
         else { return nil }
         
-        // scale if necessary
-        // a clip's local start will be scaled if the clip contains `conform-rate`
-        let isStartAttribute = ["start" /*, "tcStart" */].contains(attributeName)
-        if scaled,
-           let scalingFactor = _fcpCachedConformRateScalingFraction(includingSelf: isStartAttribute)
-        {
-            return FinalCutPro.FCPXML.ProjectionTiming.multiplying(base, scalingFactor)
-        } else {
-            return base
-        }
+        _ = scaled
+        return base
     }
     
     /// FCPXML: Set an attribute time value from a `Fraction` instance.
@@ -250,21 +238,7 @@ extension OFKXMLElement {
         forAttribute attributeName: String,
         scaled: Bool
     ) {
-        var newValue = newValue
-        
-        // scale if necessary
-        // a clip's local start will be scaled if the clip contains `conform-rate`
-        let isStartAttribute = ["start" /*, "tcStart" */].contains(attributeName)
-        if scaled,
-           let _newValue = newValue,
-           let scalingFactor = _fcpConformRateScalingFraction(includingSelf: isStartAttribute)
-        {
-            guard let converted = FinalCutPro.FCPXML.ProjectionTiming.dividing(
-                _newValue,
-                scalingFactor
-            ) else { return }
-            newValue = converted
-        }
+        _ = scaled
         
         addAttribute(
             name: attributeName,

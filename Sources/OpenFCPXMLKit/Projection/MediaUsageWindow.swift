@@ -34,11 +34,21 @@ extension FinalCutPro.FCPXML {
         /// Absolute (sequence-local) timeline out from ``retiming``.
         public var timelineOut: Fraction { retiming.timelineEnd }
 
-        /// Media in from ``retiming``.
-        public var mediaIn: Fraction { retiming.mediaStart }
+        /// Lower source-media boundary consumed by this window.
+        ///
+        /// Reverse direction remains available as ``RetimingSegment/isReversed`` and through
+        /// the directional `retiming.mediaStart` / `retiming.mediaEnd` mapping.
+        public var mediaIn: Fraction {
+            ProjectionTiming.ordered(retiming.mediaStart, retiming.mediaEnd)?.0
+                ?? retiming.mediaStart
+        }
 
-        /// Media out from ``retiming``.
-        public var mediaOut: Fraction { retiming.mediaEnd }
+        /// Upper source-media boundary consumed by this window. Hold/freeze windows have equal
+        /// media boundaries while retaining positive timeline occupancy.
+        public var mediaOut: Fraction {
+            ProjectionTiming.ordered(retiming.mediaStart, retiming.mediaEnd)?.1
+                ?? retiming.mediaEnd
+        }
 
         /// Clip display name when known.
         public var clipDisplayName: String?

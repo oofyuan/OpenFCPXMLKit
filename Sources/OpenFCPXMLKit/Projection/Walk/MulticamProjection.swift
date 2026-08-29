@@ -54,6 +54,21 @@ extension FinalCutPro.FCPXML {
             guard let multicam = mcClip.multicamResource else { return }
 
             let parentLocalStart = mcClip.start
+            var angleParents = parentRetimings
+            let conformMapping = try ProjectionConformMapping.resolving(
+                for: element,
+                resources: resources
+            )
+            if mcClip.timeMap != nil || !conformMapping.isIdentity {
+                let containerSegments = try SpineProjection.containerContentRetimings(
+                    timeMap: mcClip.timeMap,
+                    timelineOffset: absoluteStart,
+                    timelineDuration: mcClip.duration,
+                    sourceLocalStart: parentLocalStart,
+                    conformMapping: conformMapping
+                )
+                angleParents.append(containerSegments)
+            }
             switch options.mcClipAngles {
             case .active:
                 let (audioAngle, videoAngle) = mcClip.audioVideoMCAngles
@@ -65,7 +80,7 @@ extension FinalCutPro.FCPXML {
                         videoAngle,
                         resources: resources,
                         ancestors: ancestors,
-                        parentRetimings: parentRetimings,
+                        parentRetimings: angleParents,
                         lanePath: lanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: parentLocalStart,
@@ -80,7 +95,7 @@ extension FinalCutPro.FCPXML {
                             videoAngle,
                             resources: resources,
                             ancestors: ancestors,
-                        parentRetimings: parentRetimings,
+                            parentRetimings: angleParents,
                             lanePath: lanePath,
                             parentAbsoluteStart: absoluteStart,
                             parentLocalStart: parentLocalStart,
@@ -95,7 +110,7 @@ extension FinalCutPro.FCPXML {
                             audioAngle,
                             resources: resources,
                             ancestors: ancestors,
-                        parentRetimings: parentRetimings,
+                            parentRetimings: angleParents,
                             lanePath: lanePath,
                             parentAbsoluteStart: absoluteStart,
                             parentLocalStart: parentLocalStart,
@@ -113,7 +128,7 @@ extension FinalCutPro.FCPXML {
                         angle,
                         resources: resources,
                         ancestors: ancestors,
-                        parentRetimings: parentRetimings,
+                        parentRetimings: angleParents,
                         lanePath: lanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: parentLocalStart,

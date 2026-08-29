@@ -197,7 +197,8 @@ extension OFKXMLElement {
         )?.doubleValue
     }
 
-    /// Exact conform-rate factor used by authoritative timing attributes.
+    /// Exact conform-rate factor for explicit callers. Raw timing attribute decoding never
+    /// invokes this helper.
     func _fcpConformRateScalingFraction<S: Sequence<any OFKXMLElement>>(
         ancestors: S? = nil as [any OFKXMLElement]?,
         timelineFrameRate: TimecodeFrameRate? = nil,
@@ -229,8 +230,8 @@ extension OFKXMLElement {
         
         guard let timelineFrameRate else { return nil }
         
-        // FCPXML shouldn't request conforming between the same frame rate
-        assert(timelineFrameRate != mediaFrameRate)
+        // Equal-rate conform declarations are an explicit no-op, not a projection failure.
+        guard timelineFrameRate != mediaFrameRate else { return nil }
         
         let scalingFactor = Self._fcpConformRateScalingFraction(
             timelineFrameRate: timelineFrameRate,

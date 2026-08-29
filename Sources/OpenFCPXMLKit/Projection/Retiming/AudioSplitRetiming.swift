@@ -64,13 +64,15 @@ extension FinalCutPro.FCPXML {
             videoMediaStart: Fraction,
             clipStartAttribute: Fraction?,
             audioStart: Fraction?,
-            audioDuration: Fraction?
+            audioDuration: Fraction?,
+            conformMapping: ProjectionConformMapping = .identity
         ) throws -> ChannelSegments {
             let video = try ClipRetiming.segments(
                 timeMap: timeMap,
-                clipOffset: absoluteStart,
-                clipDuration: videoDuration,
-                mediaStart: videoMediaStart
+                timelineOffset: absoluteStart,
+                timelineDuration: videoDuration,
+                sourceMediaStart: videoMediaStart,
+                conformMapping: conformMapping
             )
 
             guard hasSplitEdit(
@@ -84,22 +86,37 @@ extension FinalCutPro.FCPXML {
 
             let clipStart = clipStartAttribute ?? .zero
             let resolvedAudioStart = audioStart ?? clipStart
-            let effectiveAudioDuration = audioDuration ?? videoDuration
-            guard let relativeAudioStart = ProjectionTiming.subtracting(
+            guard let sourceRelativeAudioStart = ProjectionTiming.subtracting(
                 resolvedAudioStart,
                 clipStart
             ),
+            let relativeAudioStart = timeMap == nil
+                ? conformMapping.timelineDuration(
+                    forSourceDuration: sourceRelativeAudioStart
+                )
+                : sourceRelativeAudioStart,
             let audioTimelineStart = ProjectionTiming.adding(
                 absoluteStart,
                 relativeAudioStart
             ) else {
                 throw ProjectionTiming.ArithmeticError.unrepresentable
             }
+            let audioTimelineDuration: Fraction
+            if let audioDuration {
+                guard let mappedDuration = timeMap == nil
+                    ? conformMapping.timelineDuration(forSourceDuration: audioDuration)
+                    : audioDuration
+                else { throw ProjectionTiming.ArithmeticError.unrepresentable }
+                audioTimelineDuration = mappedDuration
+            } else {
+                audioTimelineDuration = videoDuration
+            }
             let audio = try ClipRetiming.segments(
                 timeMap: timeMap,
-                clipOffset: audioTimelineStart,
-                clipDuration: effectiveAudioDuration,
-                mediaStart: resolvedAudioStart
+                timelineOffset: audioTimelineStart,
+                timelineDuration: audioTimelineDuration,
+                sourceMediaStart: resolvedAudioStart,
+                conformMapping: conformMapping
             )
             return ChannelSegments(video: video, audio: audio)
         }

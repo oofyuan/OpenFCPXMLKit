@@ -33,9 +33,9 @@ extension FinalCutPro.FCPXML.ConformRate {
     /// Returns a copy of `segment` with ``RetimingSegment/scale`` set from the conform factor
     /// when applicable.
     ///
-    /// Timeline and media span coordinates are left unchanged. Model attribute getters already
-    /// apply conform scaling to `offset` / `start` / `duration`; this helper annotates the
-    /// factor for reporting and for callers working with unscaled fractions.
+    /// Timeline and media span coordinates are left unchanged. This helper is non-authoritative
+    /// reporting metadata; ``TimelineProjector`` applies conform through its explicit exact
+    /// coordinate mapping instead.
     func applyingConform(
         to segment: FinalCutPro.FCPXML.RetimingSegment,
         timelineFrameRate: TimecodeFrameRate?

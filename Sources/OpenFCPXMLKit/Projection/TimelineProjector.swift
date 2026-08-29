@@ -19,8 +19,8 @@ extension FinalCutPro.FCPXML {
     /// resolved media channel). When an ``AssetClip`` has a ``TimeMap`` with ≥ 2 points,
     /// each retiming segment (and channel) becomes its own window; reverse playback and
     /// multi-point maps are expressed via ``RetimingSegment``. Without a usable timeMap,
-    /// identity placement is used (`offset` / `duration` / `start` from model getters,
-    /// which already apply `conform-rate` scaling when present).
+    /// the projector reads raw `offset` / `duration` / `start` attributes and applies any
+    /// host-owned `conform-rate` as an explicit timeline-duration ↔ source-duration mapping.
     ///
     /// Recursively walks nested spines and anchored story children, composing
     /// ``LanePath`` and absolute timeline starts relative to parent `start` / sequence
