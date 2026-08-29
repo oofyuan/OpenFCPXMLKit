@@ -88,9 +88,11 @@ extension FinalCutPro.FCPXML {
             return matched.filter { $0.sourceIndex == sourceIndex }
         }
 
-        /// Parses a `srcID` attribute string to a 1-based source index.
+        /// Resolves a `srcID` attribute to its 1-based source index. The FCPXML DTD default is
+        /// source 1 when the attribute is absent. Malformed and non-positive values are invalid.
         static func sourceIndex(fromSrcID srcID: String?) -> Int? {
-            guard let srcID, let value = Int(srcID), value > 0 else { return nil }
+            guard let srcID else { return 1 }
+            guard let value = Int(srcID), value > 0 else { return nil }
             return value
         }
 

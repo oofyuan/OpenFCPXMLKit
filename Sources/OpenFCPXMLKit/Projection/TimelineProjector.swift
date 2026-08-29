@@ -57,9 +57,15 @@ extension FinalCutPro.FCPXML {
             // absolute = tcStart + (offset − tcStart) when tcStart is present, else
             // absolute = offset when parentLocalStart is nil.
             let parentLocalStart: Fraction? = sequence.tcStart != nil ? tcStart : nil
+            let rootAddress = ProjectNodeAddress.root(for: source)
+            let sequenceAddress = source.project == nil
+                ? rootAddress
+                : rootAddress.appending(sequence.element)
+            let spineAddress = sequenceAddress.appending(sequence.spine.element)
             try SpineProjection.projectStoryElements(
                 sequence.spine.element.fcpProjectableStoryElements,
                 resources: fcpxml.root.resources,
+                parentNodeAddress: spineAddress,
                 lanePath: .primary,
                 parentAbsoluteStart: parentLocalStart != nil ? tcStart : .zero,
                 parentLocalStart: parentLocalStart,

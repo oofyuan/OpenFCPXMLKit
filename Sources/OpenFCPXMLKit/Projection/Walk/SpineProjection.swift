@@ -20,8 +20,10 @@ extension FinalCutPro.FCPXML {
         static func projectStoryElements(
             _ elements: [any OFKXMLElement],
             resources: (any OFKXMLElement)?,
+            parentNodeAddress: ProjectNodeAddress,
             ancestors: [any OFKXMLElement] = [],
             parentRetimings: [[RetimingSegment]] = [],
+            resourceReferencePath: Set<String> = [],
             lanePath: LanePath,
             parentAbsoluteStart: Fraction,
             parentLocalStart: Fraction?,
@@ -29,36 +31,71 @@ extension FinalCutPro.FCPXML {
             options: TimelineProjectionOptions,
             onWindow: (MediaUsageWindow) throws -> Void,
             depth: Int = 0,
-            contentRetimings: [RetimingSegment] = []
+            contentRetimings: [RetimingSegment] = [],
+            resolvedNodeAddresses: [ProjectNodeAddress]? = nil
         ) throws {
-            // Guard against pathological nesting (cyclic media refs, etc.).
-            guard depth < 64 else { return }
-
-            for element in elements {
+            let addressedElements: [(element: any OFKXMLElement, address: ProjectNodeAddress)]
+            if let resolvedNodeAddresses, resolvedNodeAddresses.count == elements.count {
+                addressedElements = zip(elements, resolvedNodeAddresses).map {
+                    (element: $0.0, address: $0.1)
+                }
+            } else {
+                addressedElements = parentNodeAddress.addressing(elements)
+            }
+            for addressedElement in addressedElements {
+                let element = addressedElement.element
                 if let type = element.fcpElementType, type.isLeafAnnotation {
                     continue
                 }
                 // Pool boundary per element: walking a subtree reads the XML tree heavily, and
                 // the Foundation backend returns autoreleased objects that would otherwise
                 // accumulate for the entire projection.
-                try autoreleasepool {
-                    try projectStoryElement(
-                        element,
-                        resources: resources,
-                        ancestors: ancestors,
-                        parentRetimings: retimings(
-                            parentRetimings,
-                            boundingContent: element,
-                            with: contentRetimings
-                        ),
-                        lanePath: lanePath,
-                        parentAbsoluteStart: parentAbsoluteStart,
-                        parentLocalStart: parentLocalStart,
-                        channelFilter: channelFilter,
-                        options: options,
-                        onWindow: onWindow,
-                        depth: depth
+                let nodeAddress = addressedElement.address
+                guard depth < 64 else {
+                    TimelineProjectionLocals.restorationDiagnosticCollector?.append(
+                        ProjectRestorationIssue(
+                            code: .depthLimit,
+                            nodeAddress: nodeAddress,
+                            ref: element.fcpRef,
+                            resourceID: element.fcpRef,
+                            message: "Project restoration traversal exceeded depth 64"
+                        )
                     )
+                    continue
+                }
+                do {
+                    try autoreleasepool {
+                        try projectStoryElement(
+                            element,
+                            nodeAddress: nodeAddress,
+                            resources: resources,
+                            ancestors: ancestors,
+                            parentRetimings: retimings(
+                                parentRetimings,
+                                boundingContent: element,
+                                with: contentRetimings
+                            ),
+                            resourceReferencePath: resourceReferencePath,
+                            lanePath: lanePath,
+                            parentAbsoluteStart: parentAbsoluteStart,
+                            parentLocalStart: parentLocalStart,
+                            channelFilter: channelFilter,
+                            options: options,
+                            onWindow: onWindow,
+                            depth: depth
+                        )
+                    }
+                } catch {
+                    guard let collector = TimelineProjectionLocals.restorationDiagnosticCollector else {
+                        throw error
+                    }
+                    collector.append(ProjectRestorationIssue(
+                        code: .projectionFailure,
+                        nodeAddress: nodeAddress,
+                        ref: element.fcpRef,
+                        resourceID: element.fcpRef,
+                        message: "Projection failed at \(nodeAddress.description): \(error.localizedDescription)"
+                    ))
                 }
             }
         }
@@ -100,10 +137,12 @@ extension FinalCutPro.FCPXML {
         /// `srcEnable` restriction into independently connected lane items.
         static func projectHostChildren(
             of element: any OFKXMLElement,
+            nodeAddress: ProjectNodeAddress,
             includingHost: Bool,
             resources: (any OFKXMLElement)?,
             ancestors: [any OFKXMLElement],
             parentRetimings: [[RetimingSegment]],
+            resourceReferencePath: Set<String>,
             lanePath: LanePath,
             parentAbsoluteStart: Fraction,
             parentLocalStart: Fraction?,
@@ -113,22 +152,27 @@ extension FinalCutPro.FCPXML {
             onWindow: (MediaUsageWindow) throws -> Void,
             depth: Int
         ) throws {
-            for child in projectableChildren(of: element, includingHost: includingHost) {
+            let children = projectableChildren(of: element, includingHost: includingHost)
+            for addressedChild in nodeAddress.addressing(children) {
+                let child = addressedChild.element
                 let filter = (child.fcpLane ?? 0) == 0
                     ? primaryChannelFilter
                     : connectedChannelFilter
                 try projectStoryElements(
                     [child],
                     resources: resources,
+                    parentNodeAddress: nodeAddress,
                     ancestors: ancestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: lanePath,
                     parentAbsoluteStart: parentAbsoluteStart,
                     parentLocalStart: parentLocalStart,
                     channelFilter: filter,
                     options: options,
                     onWindow: onWindow,
-                    depth: depth
+                    depth: depth,
+                    resolvedNodeAddresses: [addressedChild.address]
                 )
             }
         }
@@ -224,9 +268,11 @@ extension FinalCutPro.FCPXML {
 
         private static func projectStoryElement(
             _ element: any OFKXMLElement,
+            nodeAddress: ProjectNodeAddress,
             resources: (any OFKXMLElement)?,
             ancestors: [any OFKXMLElement],
             parentRetimings: [[RetimingSegment]],
+            resourceReferencePath: Set<String>,
             lanePath: LanePath,
             parentAbsoluteStart: Fraction,
             parentLocalStart: Fraction?,
@@ -257,6 +303,7 @@ extension FinalCutPro.FCPXML {
                     try emitAssetClipWindows(
                         assetClip: assetClip,
                         element: element,
+                        nodeAddress: nodeAddress,
                         ancestors: ancestors,
                         parentRetimings: parentRetimings,
                         resources: resources,
@@ -279,10 +326,12 @@ extension FinalCutPro.FCPXML {
                 }
                 try projectHostChildren(
                     of: element,
+                    nodeAddress: nodeAddress,
                     includingHost: includeHost,
                     resources: resources,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: elementLanePath,
                     parentAbsoluteStart: absoluteStart,
                     parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -304,6 +353,7 @@ extension FinalCutPro.FCPXML {
                     try emitVideoWindows(
                         video: video,
                         element: element,
+                        nodeAddress: nodeAddress,
                         ancestors: ancestors,
                         parentRetimings: parentRetimings,
                         resources: resources,
@@ -329,8 +379,10 @@ extension FinalCutPro.FCPXML {
                     try projectStoryElements(
                         childElements,
                         resources: resources,
+                        parentNodeAddress: nodeAddress,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
+                        resourceReferencePath: resourceReferencePath,
                         lanePath: elementLanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -349,6 +401,7 @@ extension FinalCutPro.FCPXML {
                     try emitAudioWindows(
                         audio: audio,
                         element: element,
+                        nodeAddress: nodeAddress,
                         ancestors: ancestors,
                         parentRetimings: parentRetimings,
                         resources: resources,
@@ -374,8 +427,10 @@ extension FinalCutPro.FCPXML {
                     try projectStoryElements(
                         childElements,
                         resources: resources,
+                        parentNodeAddress: nodeAddress,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
+                        resourceReferencePath: resourceReferencePath,
                         lanePath: elementLanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -392,8 +447,10 @@ extension FinalCutPro.FCPXML {
                 try projectStoryElements(
                     spine.element.fcpProjectableStoryElements,
                     resources: resources,
+                    parentNodeAddress: nodeAddress,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: elementLanePath,
                     parentAbsoluteStart: absoluteStart,
                     parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -416,8 +473,10 @@ extension FinalCutPro.FCPXML {
                 try projectStoryElements(
                     clips,
                     resources: resources,
+                    parentNodeAddress: nodeAddress,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: elementLanePath,
                     parentAbsoluteStart: absoluteStart,
                     parentLocalStart: nil,
@@ -434,10 +493,12 @@ extension FinalCutPro.FCPXML {
                 guard includeHost else {
                     try projectHostChildren(
                         of: element,
+                        nodeAddress: nodeAddress,
                         includingHost: false,
                         resources: resources,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
+                        resourceReferencePath: resourceReferencePath,
                         lanePath: elementLanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -466,9 +527,11 @@ extension FinalCutPro.FCPXML {
                 try MulticamProjection.project(
                     mcClip: mcClip,
                     element: element,
+                    nodeAddress: nodeAddress,
                     resources: resources,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: elementLanePath,
                     absoluteStart: absoluteStart,
                     channelFilter: channelFilter,
@@ -484,10 +547,12 @@ extension FinalCutPro.FCPXML {
                 guard includeHost else {
                     try projectHostChildren(
                         of: element,
+                        nodeAddress: nodeAddress,
                         includingHost: false,
                         resources: resources,
                         ancestors: childAncestors,
                         parentRetimings: parentRetimings,
+                        resourceReferencePath: resourceReferencePath,
                         lanePath: elementLanePath,
                         parentAbsoluteStart: absoluteStart,
                         parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -515,9 +580,11 @@ extension FinalCutPro.FCPXML {
                 try RefClipProjection.project(
                     refClip: refClip,
                     element: element,
+                    nodeAddress: nodeAddress,
                     resources: resources,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: elementLanePath,
                     absoluteStart: absoluteStart,
                     channelFilter: channelFilter,
@@ -545,8 +612,10 @@ extension FinalCutPro.FCPXML {
                 try projectStoryElements(
                     projectableChildren(of: title.element, includingHost: includeHost),
                     resources: resources,
+                    parentNodeAddress: nodeAddress,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: elementLanePath,
                     parentAbsoluteStart: absoluteStart,
                     parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -572,8 +641,10 @@ extension FinalCutPro.FCPXML {
                 try projectStoryElements(
                     transition.element.fcpProjectableStoryElements,
                     resources: resources,
+                    parentNodeAddress: nodeAddress,
                     ancestors: childAncestors,
                     parentRetimings: parentRetimings,
+                    resourceReferencePath: resourceReferencePath,
                     lanePath: elementLanePath,
                     parentAbsoluteStart: absoluteStart,
                     parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -616,8 +687,10 @@ extension FinalCutPro.FCPXML {
             try projectStoryElements(
                 childElements,
                 resources: resources,
+                parentNodeAddress: nodeAddress,
                 ancestors: childAncestors,
                 parentRetimings: parentRetimings,
+                resourceReferencePath: resourceReferencePath,
                 lanePath: elementLanePath,
                 parentAbsoluteStart: absoluteStart,
                 parentLocalStart: ProjectionTiming.localStartForChildren(of: element),
@@ -636,6 +709,7 @@ extension FinalCutPro.FCPXML {
         private static func emitAssetClipWindows(
             assetClip: AssetClip,
             element: any OFKXMLElement,
+            nodeAddress: ProjectNodeAddress,
             ancestors: [any OFKXMLElement],
             parentRetimings: [[RetimingSegment]],
             resources: (any OFKXMLElement)?,
@@ -645,8 +719,26 @@ extension FinalCutPro.FCPXML {
             options: TimelineProjectionOptions,
             onWindow: (MediaUsageWindow) throws -> Void
         ) throws {
-            guard let asset = element.fcpResource(forID: assetClip.ref, in: resources)?.fcpAsAsset
-            else { return }
+            guard let resource = element.fcpResource(forID: assetClip.ref, in: resources) else {
+                recordProjectionIssue(
+                    code: .missingResource,
+                    nodeAddress: nodeAddress,
+                    ref: assetClip.ref,
+                    resourceID: assetClip.ref,
+                    message: "asset-clip ref \(assetClip.ref) did not resolve during projection"
+                )
+                return
+            }
+            guard let asset = resource.fcpAsAsset else {
+                recordProjectionIssue(
+                    code: .invalidContainerResource,
+                    nodeAddress: nodeAddress,
+                    ref: assetClip.ref,
+                    resourceID: assetClip.ref,
+                    message: "asset-clip ref \(assetClip.ref) did not resolve to an asset"
+                )
+                return
+            }
 
             let filter = ChannelKindFilter.intersecting(
                 channelFilter,
@@ -676,12 +768,20 @@ extension FinalCutPro.FCPXML {
                 conformMapping: conformMapping
             )
             let displayName = assetClip.name ?? asset.name
+            let sourceFacts = ProjectSourceChannelFacts.reading(
+                element,
+                expandsAllAssetChannels: options.expandAllSourceChannels
+            )
 
             for channel in channels {
+                var segmentOrdinal = 0
                 let retimings = channel.kind == .audio ? channelSegments.audio : channelSegments.video
                 for retiming in retimings {
                     try emitComposedWindows(
                         channel: channel,
+                        nodeAddress: nodeAddress,
+                        sourceChannelFacts: sourceFacts,
+                        nextSegmentOrdinal: &segmentOrdinal,
                         lanePath: lanePath,
                         retiming: retiming,
                         parentRetimings: parentRetimings,
@@ -699,6 +799,7 @@ extension FinalCutPro.FCPXML {
         private static func emitVideoWindows(
             video: Video,
             element: any OFKXMLElement,
+            nodeAddress: ProjectNodeAddress,
             ancestors: [any OFKXMLElement],
             parentRetimings: [[RetimingSegment]],
             resources: (any OFKXMLElement)?,
@@ -709,15 +810,52 @@ extension FinalCutPro.FCPXML {
             onWindow: (MediaUsageWindow) throws -> Void
         ) throws {
             guard channelFilter.allows(.video) else { return }
-            guard let asset = element.fcpResource(forID: video.ref, in: resources)?.fcpAsAsset
-            else { return }
+            guard let resource = element.fcpResource(forID: video.ref, in: resources) else {
+                recordProjectionIssue(
+                    code: .missingResource,
+                    nodeAddress: nodeAddress,
+                    ref: video.ref,
+                    resourceID: video.ref,
+                    message: "video ref \(video.ref) did not resolve during projection"
+                )
+                return
+            }
+            guard let asset = resource.fcpAsAsset else {
+                recordProjectionIssue(
+                    code: .invalidContainerResource,
+                    nodeAddress: nodeAddress,
+                    ref: video.ref,
+                    resourceID: video.ref,
+                    message: "video ref \(video.ref) did not resolve to an asset"
+                )
+                return
+            }
 
+            guard let sourceIndex = AssetChannelExpansion.sourceIndex(fromSrcID: video.srcID) else {
+                recordProjectionIssue(
+                    code: .invalidSourceID,
+                    nodeAddress: nodeAddress,
+                    ref: video.ref,
+                    resourceID: video.ref,
+                    message: "video srcID must be a positive integer; only an absent srcID defaults to 1"
+                )
+                return
+            }
             let channels = AssetChannelExpansion.channels(
                 from: asset,
                 kind: .video,
-                sourceIndex: AssetChannelExpansion.sourceIndex(fromSrcID: video.srcID)
+                sourceIndex: sourceIndex
             )
-            guard !channels.isEmpty else { return }
+            guard !channels.isEmpty else {
+                recordProjectionIssue(
+                    code: .sourceIndexOutOfRange,
+                    nodeAddress: nodeAddress,
+                    ref: video.ref,
+                    resourceID: video.ref,
+                    message: "video srcID \(sourceIndex) is outside asset \(video.ref) channels"
+                )
+                return
+            }
 
             let mediaStart = video.start ?? asset.start ?? .zero
             let conformMapping = try ProjectionConformMapping.resolving(
@@ -732,11 +870,16 @@ extension FinalCutPro.FCPXML {
                 conformMapping: conformMapping
             )
             let displayName = video.name ?? asset.name
+            let sourceFacts = ProjectSourceChannelFacts.reading(element)
 
             for channel in channels {
+                var segmentOrdinal = 0
                 for retiming in retimings {
                     try emitComposedWindows(
                         channel: channel,
+                        nodeAddress: nodeAddress,
+                        sourceChannelFacts: sourceFacts,
+                        nextSegmentOrdinal: &segmentOrdinal,
                         lanePath: lanePath,
                         retiming: retiming,
                         parentRetimings: parentRetimings,
@@ -754,6 +897,7 @@ extension FinalCutPro.FCPXML {
         private static func emitAudioWindows(
             audio: Audio,
             element: any OFKXMLElement,
+            nodeAddress: ProjectNodeAddress,
             ancestors: [any OFKXMLElement],
             parentRetimings: [[RetimingSegment]],
             resources: (any OFKXMLElement)?,
@@ -764,15 +908,52 @@ extension FinalCutPro.FCPXML {
             onWindow: (MediaUsageWindow) throws -> Void
         ) throws {
             guard channelFilter.allows(.audio) else { return }
-            guard let asset = element.fcpResource(forID: audio.ref, in: resources)?.fcpAsAsset
-            else { return }
+            guard let resource = element.fcpResource(forID: audio.ref, in: resources) else {
+                recordProjectionIssue(
+                    code: .missingResource,
+                    nodeAddress: nodeAddress,
+                    ref: audio.ref,
+                    resourceID: audio.ref,
+                    message: "audio ref \(audio.ref) did not resolve during projection"
+                )
+                return
+            }
+            guard let asset = resource.fcpAsAsset else {
+                recordProjectionIssue(
+                    code: .invalidContainerResource,
+                    nodeAddress: nodeAddress,
+                    ref: audio.ref,
+                    resourceID: audio.ref,
+                    message: "audio ref \(audio.ref) did not resolve to an asset"
+                )
+                return
+            }
 
+            guard let sourceIndex = AssetChannelExpansion.sourceIndex(fromSrcID: audio.srcID) else {
+                recordProjectionIssue(
+                    code: .invalidSourceID,
+                    nodeAddress: nodeAddress,
+                    ref: audio.ref,
+                    resourceID: audio.ref,
+                    message: "audio srcID must be a positive integer; only an absent srcID defaults to 1"
+                )
+                return
+            }
             let channels = AssetChannelExpansion.channels(
                 from: asset,
                 kind: .audio,
-                sourceIndex: AssetChannelExpansion.sourceIndex(fromSrcID: audio.srcID)
+                sourceIndex: sourceIndex
             )
-            guard !channels.isEmpty else { return }
+            guard !channels.isEmpty else {
+                recordProjectionIssue(
+                    code: .sourceIndexOutOfRange,
+                    nodeAddress: nodeAddress,
+                    ref: audio.ref,
+                    resourceID: audio.ref,
+                    message: "audio srcID \(sourceIndex) is outside asset \(audio.ref) channels"
+                )
+                return
+            }
 
             let mediaStart = audio.start ?? asset.start ?? .zero
             let conformMapping = try ProjectionConformMapping.resolving(
@@ -787,11 +968,16 @@ extension FinalCutPro.FCPXML {
                 conformMapping: conformMapping
             )
             let displayName = audio.name ?? asset.name
+            let sourceFacts = ProjectSourceChannelFacts.reading(element)
 
             for channel in channels {
+                var segmentOrdinal = 0
                 for retiming in retimings {
                     try emitComposedWindows(
                         channel: channel,
+                        nodeAddress: nodeAddress,
+                        sourceChannelFacts: sourceFacts,
+                        nextSegmentOrdinal: &segmentOrdinal,
                         lanePath: lanePath,
                         retiming: retiming,
                         parentRetimings: parentRetimings,
@@ -808,6 +994,9 @@ extension FinalCutPro.FCPXML {
 
         private static func emitComposedWindows(
             channel: MediaChannel,
+            nodeAddress: ProjectNodeAddress,
+            sourceChannelFacts: ProjectSourceChannelFacts,
+            nextSegmentOrdinal: inout Int,
             lanePath: LanePath,
             retiming: RetimingSegment,
             parentRetimings: [[RetimingSegment]],
@@ -819,6 +1008,18 @@ extension FinalCutPro.FCPXML {
             onWindow: (MediaUsageWindow) throws -> Void
         ) throws {
             let composed = RetimingSegment.composing(parentLayers: parentRetimings, child: retiming)
+            let usable = composed.filter(\.hasUsableProjectionEndpoints)
+            if usable.count != composed.count || usable.isEmpty {
+                TimelineProjectionLocals.restorationDiagnosticCollector?.append(
+                    ProjectRestorationIssue(
+                        code: .projectionFailure,
+                        nodeAddress: nodeAddress,
+                        ref: channel.resourceID,
+                        resourceID: channel.resourceID,
+                        message: "Media retiming composition did not produce every exact usable endpoint"
+                    )
+                )
+            }
             let annotations = WindowAnnotationBuilder.annotations(
                 for: element,
                 ancestors: ancestors,
@@ -826,7 +1027,9 @@ extension FinalCutPro.FCPXML {
                 options: options,
                 channelKind: channel.kind
             )
-            for segment in composed where segment.hasUsableProjectionEndpoints {
+            for segment in usable {
+                let segmentOrdinal = nextSegmentOrdinal
+                nextSegmentOrdinal += 1
                 try onWindow(
                     MediaUsageWindow(
                         channel: channel,
@@ -835,10 +1038,31 @@ extension FinalCutPro.FCPXML {
                         clipDisplayName: displayName,
                         roles: annotations.roles,
                         effects: annotations.effects,
-                        breadcrumbs: annotations.breadcrumbs
+                        breadcrumbs: annotations.breadcrumbs,
+                        projectNodeAddress: nodeAddress,
+                        retimingSegmentOrdinal: segmentOrdinal,
+                        sourceChannelFacts: sourceChannelFacts
                     )
                 )
             }
+        }
+
+        static func recordProjectionIssue(
+            code: ProjectRestorationIssueCode,
+            nodeAddress: ProjectNodeAddress,
+            ref: String?,
+            resourceID: String?,
+            message: String
+        ) {
+            TimelineProjectionLocals.restorationDiagnosticCollector?.append(
+                ProjectRestorationIssue(
+                    code: code,
+                    nodeAddress: nodeAddress,
+                    ref: ref,
+                    resourceID: resourceID,
+                    message: message
+                )
+            )
         }
 
         /// Emits clip/title annotations once per host when a collector is installed.

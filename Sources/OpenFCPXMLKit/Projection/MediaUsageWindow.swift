@@ -62,6 +62,15 @@ extension FinalCutPro.FCPXML {
         /// Story path furthest-ancestor → leaf (empty unless annotations are enabled).
         public var breadcrumbs: [WindowBreadcrumb]
 
+        /// Stable structural address of the media leaf within the selected Project closure.
+        public var projectNodeAddress: ProjectNodeAddress?
+
+        /// Stable ordinal of this retiming segment within the addressed media leaf/channel.
+        public var retimingSegmentOrdinal: Int?
+
+        /// Raw source/channel declarations preserved at the usage site.
+        public var sourceChannelFacts: ProjectSourceChannelFacts
+
         public init(
             channel: MediaChannel,
             lanePath: LanePath = .primary,
@@ -69,7 +78,14 @@ extension FinalCutPro.FCPXML {
             clipDisplayName: String? = nil,
             roles: [AnyInterpolatedRole] = [],
             effects: [WindowEffectAnnotation] = [],
-            breadcrumbs: [WindowBreadcrumb] = []
+            breadcrumbs: [WindowBreadcrumb] = [],
+            projectNodeAddress: ProjectNodeAddress? = nil,
+            retimingSegmentOrdinal: Int? = nil,
+            sourceChannelFacts: ProjectSourceChannelFacts = .init(
+                declaredSourceID: nil,
+                sourceChannels: nil,
+                outputChannels: nil
+            )
         ) {
             self.channel = channel
             self.lanePath = lanePath
@@ -78,6 +94,9 @@ extension FinalCutPro.FCPXML {
             self.roles = roles
             self.effects = effects
             self.breadcrumbs = breadcrumbs
+            self.projectNodeAddress = projectNodeAddress
+            self.retimingSegmentOrdinal = retimingSegmentOrdinal
+            self.sourceChannelFacts = sourceChannelFacts
         }
     }
 }

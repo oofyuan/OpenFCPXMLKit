@@ -21,7 +21,21 @@ extension FinalCutPro.FCPXML {
         }
     }
 
+    /// Collects structural projection failures while building a restoration graph.
+    ///
+    /// The ordinary projector remains fail-fast. Graph construction installs this
+    /// task-local collector so one unsupported subtree becomes an explicit issue
+    /// without hiding the rest of the selected Project closure.
+    final class ProjectRestorationDiagnosticCollector: @unchecked Sendable {
+        private(set) var issues: [ProjectRestorationIssue] = []
+
+        func append(_ issue: ProjectRestorationIssue) {
+            issues.append(issue)
+        }
+    }
+
     enum TimelineProjectionLocals {
         @TaskLocal static var clipAnnotationCollector: ClipAnnotationCollector?
+        @TaskLocal static var restorationDiagnosticCollector: ProjectRestorationDiagnosticCollector?
     }
 }
