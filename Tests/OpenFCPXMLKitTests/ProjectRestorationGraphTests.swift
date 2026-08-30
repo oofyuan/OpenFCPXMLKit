@@ -247,6 +247,34 @@ struct ProjectRestorationGraphTests {
         #expect(!graph.issues.contains { $0.code == .unsupportedReachableElement })
     }
 
+    @Test("A video reference to an effect is proven non-file")
+    func videoEffectReferenceIsProvenNonFile() throws {
+        let fcpxml = try parseInlineFCPXML(documentXML(
+            story: """
+            <video ref="rGenerator" offset="0s" start="0s" duration="2s"/>
+            <asset-clip ref="r2" offset="2s" start="0s" duration="2s"/>
+            """,
+            resources: """
+            <effect id="rGenerator" name="Generator" uid=".../Generators.localized/Test.localized/Test.motn"/>
+            \(asset(id: "r2"))
+            """
+        ))
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let graph = try fcpxml.projectRestorationGraph(from: source)
+
+        #expect(graph.isComplete)
+        #expect(graph.edges.contains {
+            $0.ref == "rGenerator" && $0.disposition == .provenNonFile
+        })
+        #expect(!graph.usages.contains { $0.resourceID == "rGenerator" })
+        #expect(!graph.requiresCopyFullResourceIDs.contains("rGenerator"))
+        #expect(!graph.issues.contains {
+            $0.resourceID == "rGenerator"
+                && ($0.code == .invalidContainerResource || $0.code == .projectionFailure)
+        })
+        #expect(graph.usages.contains { $0.resourceID == "r2" })
+    }
+
     @Test("A missing multicam angle is an explicit blocking edge")
     func missingMulticamAngleIsExplicit() throws {
         let fcpxml = try parseInlineFCPXML(documentXML(

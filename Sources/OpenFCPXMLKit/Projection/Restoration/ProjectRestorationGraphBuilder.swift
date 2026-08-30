@@ -498,6 +498,29 @@ extension FinalCutPro.FCPXML {
             }
             guard let resource = uniqueResource(ref: ref, at: address) else { return }
             let resourceAddress = address.appending(resource)
+
+            // FCPXML permits a <video> story element to reference either an
+            // asset or an effect (for example, a generator). Effects are
+            // structural, non-file content and therefore do not form a media
+            // leaf or require source-channel validation.
+            if sourceKind == .video, resource.fcpAsEffect != nil {
+                addNode(
+                    element: resource,
+                    address: resourceAddress,
+                    parentAddress: address,
+                    active: true,
+                    restoration: true,
+                    containerAncestry: ["effect-resource"]
+                )
+                addEdge(
+                    source: address,
+                    destination: resourceAddress,
+                    ref: ref,
+                    disposition: .provenNonFile
+                )
+                return
+            }
+
             addNode(
                 element: resource,
                 address: resourceAddress,

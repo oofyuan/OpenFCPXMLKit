@@ -820,6 +820,10 @@ extension FinalCutPro.FCPXML {
                 )
                 return
             }
+            // A <video> may reference an effect/generator. It is valid
+            // non-file content, so it contributes no MediaUsageWindow and is
+            // not a projection failure.
+            if resource.fcpAsEffect != nil { return }
             guard let asset = resource.fcpAsAsset else {
                 recordProjectionIssue(
                     code: .invalidContainerResource,
