@@ -13,6 +13,69 @@ import Testing
 struct FCPXMLTimeCoordinateContractTests {
     private let projector = FinalCutPro.FCPXML.TimelineProjector()
 
+    @Test("FCPXML 1.13 and 1.14 high conform rates map bidirectionally")
+    func highConformSourceFrameRatesMapBidirectionally() throws {
+        let pairs: [(
+            rawValue: String,
+            source: FinalCutPro.FCPXML.ConformRate.SourceFrameRate,
+            timecode: TimecodeFrameRate
+        )] = [
+            ("90", .fps90, .fps90),
+            ("100", .fps100, .fps100),
+            ("119.88", .fps119_88, .fps119_88),
+            ("120", .fps120, .fps120),
+        ]
+
+        for pair in pairs {
+            #expect(FinalCutPro.FCPXML.ConformRate.SourceFrameRate(rawValue: pair.rawValue)
+                == pair.source)
+            #expect(pair.source.timecodeFrameRate == pair.timecode)
+            #expect(FinalCutPro.FCPXML.ConformRate.SourceFrameRate(
+                timecodeFrameRate: pair.timecode
+            ) == pair.source)
+        }
+    }
+
+    @Test("119.88 conform projects large nonzero source endpoints exactly")
+    func conform11988PreservesLargeSourceEndpoints() async throws {
+        let sourceStart = Fraction(987_654_321, 120_000)
+        let sourceDuration = Fraction(12_012_000_000, 120_000)
+        let sourceEnd = try #require(FinalCutPro.FCPXML.ProjectionTiming.adding(
+            sourceStart,
+            sourceDuration
+        ))
+        let windows = try await project("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.14">
+                <resources>
+                    <format id="r1" frameDuration="1/30s" width="1920" height="1080"/>
+                    <format id="r2" frameDuration="1001/120000s" width="1920" height="1080"/>
+                    <asset id="r3" format="r2" start="987654321/120000s" duration="12012000000/120000s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/high-rate-conform.mov"/>
+                    </asset>
+                </resources>
+                <library><event name="E"><project name="P">
+                    <sequence format="r1" duration="100000s" tcStart="0s">
+                        <spine>
+                            <asset-clip ref="r3" offset="0s" start="987654321/120000s" duration="100000s">
+                                <conform-rate srcFrameRate="119.88"/>
+                            </asset-clip>
+                        </spine>
+                    </sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let video = try #require(windows.first { $0.channel.kind == .video })
+        #expect(video.timelineIn == .zero)
+        #expect(video.timelineOut == Fraction(100_000, 1))
+        #expect(video.mediaIn == sourceStart)
+        #expect(video.mediaOut == sourceEnd)
+        #expect(video.channel.nativeStart == sourceStart)
+        #expect(video.channel.nativeDuration == sourceDuration)
+    }
+
     @Test("30 to 29.97 conform preserves a large source origin")
     func conform30To2997PreservesSourceOrigin() async throws {
         let windows = try await project(assetClipFixture(
