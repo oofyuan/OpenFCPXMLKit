@@ -26,9 +26,8 @@ struct FCPXMLProjectionEdgeCaseCorpusTests {
 
     @Test("J/L cut with timeMap scales audio occupancy independently")
     func jlCutWithTimeMapScalesAudioIndependently() async throws {
-        // Video occupancy normalized onto duration=5s at offset=2s → [2,7).
-        // timeMap 0→10 remapped / 0→20 media → scale 2 on video.
-        // Audio: audioStart=9s audioDuration=7s → timeline [1,8), also timeMap-normalized.
+        // The map covers adjusted time [9,16). Video selects [10,15) at offset 2 → [2,7).
+        // Media advances 2x. Audio selects the full [9,16) split span → timeline [1,8).
         let fcpxml = try parseInlineFCPXML("""
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE fcpxml>
@@ -47,8 +46,8 @@ struct FCPXMLProjectionEdgeCaseCorpusTests {
                                     <asset-clip ref="r2" offset="2s" name="JLRetime" start="10s" duration="5s"
                                         audioStart="9s" audioDuration="7s">
                                         <timeMap>
-                                            <timept time="0s" value="0s" interp="linear"/>
-                                            <timept time="10s" value="20s" interp="linear"/>
+                                            <timept time="9s" value="18s" interp="linear"/>
+                                            <timept time="16s" value="32s" interp="linear"/>
                                         </timeMap>
                                     </asset-clip>
                                 </spine>

@@ -27,14 +27,15 @@ extension FinalCutPro.FCPXML {
             timelineOffset: Fraction,
             timelineDuration: Fraction,
             sourceMediaStart: Fraction,
+            timeMapStart: Fraction? = nil,
             conformMapping: ProjectionConformMapping = .identity
         ) throws -> [RetimingSegment] {
             if let timeMap {
-                let mapped = try timeMap.retimingSegments(
+                return try timeMap.retimingSegments(
                     clipOffset: timelineOffset,
-                    clipDuration: timelineDuration
+                    clipDuration: timelineDuration,
+                    clipTimeStart: timeMapStart
                 )
-                if !mapped.isEmpty { return mapped }
             }
 
             guard let timelineEnd = ProjectionTiming.adding(

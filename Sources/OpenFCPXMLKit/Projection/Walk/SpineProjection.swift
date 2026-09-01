@@ -232,28 +232,38 @@ extension FinalCutPro.FCPXML {
                 timelineOffset: timelineOffset,
                 timelineDuration: timelineDuration,
                 sourceMediaStart: localStart,
+                timeMapStart: sourceLocalStart,
                 conformMapping: conformMapping
             )
 
             // Child offsets are made absolute relative to the host's raw local `start`; move the
             // explicit source axis into that same coordinate space before composing leaves.
+            guard let exactTimelineOffset = ExactTime(timelineOffset) else {
+                throw ProjectionTiming.ArithmeticError.unrepresentable
+            }
+            let exactSourceLocalStart = sourceLocalStart.flatMap(ExactTime.init)
             return try segments.map { segment in
-                var segment = segment
                 guard let mediaStart = ProjectionTiming.absoluteStart(
-                    offset: segment.mediaStart,
-                    parentAbsoluteStart: timelineOffset,
-                    parentLocalStart: sourceLocalStart
+                    offset: segment.exactMediaStart,
+                    parentAbsoluteStart: exactTimelineOffset,
+                    parentLocalStart: exactSourceLocalStart
                 ),
                 let mediaEnd = ProjectionTiming.absoluteStart(
-                    offset: segment.mediaEnd,
-                    parentAbsoluteStart: timelineOffset,
-                    parentLocalStart: sourceLocalStart
+                    offset: segment.exactMediaEnd,
+                    parentAbsoluteStart: exactTimelineOffset,
+                    parentLocalStart: exactSourceLocalStart
+                ),
+                let shifted = RetimingSegment(
+                    exactTimelineStart: segment.exactTimelineStart,
+                    exactTimelineEnd: segment.exactTimelineEnd,
+                    exactMediaStart: mediaStart,
+                    exactMediaEnd: mediaEnd,
+                    scale: segment.scale,
+                    isReversed: segment.isReversed
                 ) else {
                     throw ProjectionTiming.ArithmeticError.unrepresentable
                 }
-                segment.mediaStart = mediaStart
-                segment.mediaEnd = mediaEnd
-                return segment
+                return shifted
             }
         }
 
@@ -763,6 +773,7 @@ extension FinalCutPro.FCPXML {
                 videoDuration: videoDuration,
                 videoMediaStart: videoMediaStart,
                 clipStartAttribute: assetClip.start,
+                timeMapStart: assetClip.start ?? asset.start,
                 audioStart: assetClip.audioStart,
                 audioDuration: assetClip.audioDuration,
                 conformMapping: conformMapping
@@ -871,6 +882,7 @@ extension FinalCutPro.FCPXML {
                 timelineOffset: absoluteStart,
                 timelineDuration: video.duration,
                 sourceMediaStart: mediaStart,
+                timeMapStart: video.start ?? asset.start,
                 conformMapping: conformMapping
             )
             let displayName = video.name ?? asset.name
@@ -969,6 +981,7 @@ extension FinalCutPro.FCPXML {
                 timelineOffset: absoluteStart,
                 timelineDuration: audio.duration,
                 sourceMediaStart: mediaStart,
+                timeMapStart: audio.start ?? asset.start,
                 conformMapping: conformMapping
             )
             let displayName = audio.name ?? asset.name

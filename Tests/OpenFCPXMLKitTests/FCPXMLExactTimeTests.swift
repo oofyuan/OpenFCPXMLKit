@@ -97,4 +97,15 @@ struct FCPXMLExactTimeTests {
         #expect(range.duration == ExactTime(numerator: 1, denominator: 8))
         #expect(FinalCutPro.FCPXML.ExactTimeRange(start: range.end, end: range.start) == nil)
     }
+
+    @Test("Exact time preserves values wider than the legacy Fraction boundary")
+    func exactTimePreservesWideRationals() throws {
+        let numerator = Int128(Int64.max) + 1
+        let value = try #require(ExactTime(numerator: numerator, denominator: 3))
+
+        #expect(value.numerator == numerator)
+        #expect(value.denominator == 3)
+        #expect(value.fraction == nil)
+        #expect(value.compatibilityFraction != nil)
+    }
 }

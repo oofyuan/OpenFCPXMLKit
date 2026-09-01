@@ -63,6 +63,7 @@ extension FinalCutPro.FCPXML {
             videoDuration: Fraction,
             videoMediaStart: Fraction,
             clipStartAttribute: Fraction?,
+            timeMapStart: Fraction? = nil,
             audioStart: Fraction?,
             audioDuration: Fraction?,
             conformMapping: ProjectionConformMapping = .identity
@@ -72,11 +73,12 @@ extension FinalCutPro.FCPXML {
                 timelineOffset: absoluteStart,
                 timelineDuration: videoDuration,
                 sourceMediaStart: videoMediaStart,
+                timeMapStart: timeMapStart,
                 conformMapping: conformMapping
             )
 
             guard hasSplitEdit(
-                videoStart: clipStartAttribute,
+                videoStart: timeMapStart ?? videoMediaStart,
                 videoDuration: videoDuration,
                 audioStart: audioStart,
                 audioDuration: audioDuration
@@ -84,7 +86,7 @@ extension FinalCutPro.FCPXML {
                 return ChannelSegments(video: video, audio: video)
             }
 
-            let clipStart = clipStartAttribute ?? .zero
+            let clipStart = timeMapStart ?? videoMediaStart
             let resolvedAudioStart = audioStart ?? clipStart
             guard let sourceRelativeAudioStart = ProjectionTiming.subtracting(
                 resolvedAudioStart,
@@ -116,6 +118,7 @@ extension FinalCutPro.FCPXML {
                 timelineOffset: audioTimelineStart,
                 timelineDuration: audioTimelineDuration,
                 sourceMediaStart: resolvedAudioStart,
+                timeMapStart: resolvedAudioStart,
                 conformMapping: conformMapping
             )
             return ChannelSegments(video: video, audio: audio)

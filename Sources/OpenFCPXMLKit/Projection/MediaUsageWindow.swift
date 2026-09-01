@@ -34,6 +34,10 @@ extension FinalCutPro.FCPXML {
         /// Absolute (sequence-local) timeline out from ``retiming``.
         public var timelineOut: Fraction { retiming.timelineEnd }
 
+        /// Authoritative exact timeline endpoints. Prefer these for restoration and execution.
+        public var exactTimelineIn: ExactTime { retiming.exactTimelineStart }
+        public var exactTimelineOut: ExactTime { retiming.exactTimelineEnd }
+
         /// Lower source-media boundary consumed by this window.
         ///
         /// Reverse direction remains available as ``RetimingSegment/isReversed`` and through
@@ -48,6 +52,15 @@ extension FinalCutPro.FCPXML {
         public var mediaOut: Fraction {
             ProjectionTiming.ordered(retiming.mediaStart, retiming.mediaEnd)?.1
                 ?? retiming.mediaEnd
+        }
+
+        /// Authoritative exact source-media boundaries in forward order.
+        public var exactMediaIn: ExactTime {
+            ProjectionTiming.ordered(retiming.exactMediaStart, retiming.exactMediaEnd).0
+        }
+
+        public var exactMediaOut: ExactTime {
+            ProjectionTiming.ordered(retiming.exactMediaStart, retiming.exactMediaEnd).1
         }
 
         /// Clip display name when known.

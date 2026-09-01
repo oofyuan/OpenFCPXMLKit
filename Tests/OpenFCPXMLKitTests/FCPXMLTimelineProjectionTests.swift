@@ -607,10 +607,10 @@ struct FCPXMLTimelineProjectionTests {
 
     // MARK: - timeMap retiming
 
-    @Test("TimeMap two points emits scaled identity occupancy")
-    func project_TimeMapTwoPoints_EmitsScaledIdentityOccupancy() async throws {
-        // Map span is 10s locally; clip duration is 5s → normalize onto [2s, 7s).
-        // Media 0→20s over remapped 0→10s → scale 2.0
+    @Test("TimeMap two points uses the clip's adjusted-time slice")
+    func project_TimeMapTwoPoints_UsesClipAdjustedTimeSlice() async throws {
+        // The clip selects adjusted time [0s, 5s) from a 0s→10s map. That slice consumes
+        // media [0s, 10s), rather than the whole map's [0s, 20s).
         let fcpxml = try parseInlineFCPXML("""
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE fcpxml>
@@ -648,7 +648,7 @@ struct FCPXMLTimelineProjectionTests {
         let timelineInMatch = abs(window.timelineIn.doubleValue - 2) < 0.000_1
         let timelineOutMatch = abs(window.timelineOut.doubleValue - 7) < 0.000_1
         let mediaInMatch = abs(window.mediaIn.doubleValue - 0) < 0.000_1
-        let mediaOutMatch = abs(window.mediaOut.doubleValue - 20) < 0.000_1
+        let mediaOutMatch = abs(window.mediaOut.doubleValue - 10) < 0.000_1
         let scaleMatch = abs(window.retiming.scale - 2) < 0.000_1
         #expect(timelineInMatch)
         #expect(timelineOutMatch)
@@ -656,6 +656,213 @@ struct FCPXMLTimelineProjectionTests {
         #expect(mediaOutMatch)
         #expect(scaleMatch)
         #expect(!window.retiming.isReversed)
+    }
+
+    @Test("TimeMap nonzero clip start does not inherit the map's terminal source range")
+    func project_TimeMapNonzeroStart_UsesOnlySelectedAdjustedTimeSlice() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="8000/16000s" width="1920" height="1080"/>
+                    <asset id="r2" hasVideo="1" videoSources="1" duration="62801/1000s">
+                        <media-rep kind="original-media" src="file:///tmp/a.mp4"/>
+                    </asset>
+                </resources>
+                <library>
+                    <event name="E">
+                        <project name="P">
+                            <sequence format="r1" duration="2s" tcStart="0s">
+                                <spine>
+                                    <asset-clip ref="r2" offset="0s"
+                                        start="137236/30000s" duration="44044/30000s">
+                                        <timeMap>
+                                            <timept time="0s" value="0s" interp="smooth2"/>
+                                            <timept time="463836/16000s"
+                                                value="1004816/16000s" interp="smooth2"/>
+                                        </timeMap>
+                                    </asset-clip>
+                                </spine>
+                            </sequence>
+                        </project>
+                    </event>
+                </library>
+            </fcpxml>
+            """)
+
+        let windows = try await fcpxml.projectTimeline(options: .projectRestoration)
+        let window = try #require(windows.first)
+
+        #expect(windows.count == 1)
+        #expect(window.timelineIn == Fraction(0, 1))
+        #expect(window.timelineOut == Fraction(reducing: 44_044, 30_000))
+        #expect(window.mediaIn == Fraction(reducing: 2_154_639_509, 217_423_125))
+        #expect(window.mediaOut == Fraction(reducing: 569_228_264, 43_484_625))
+        #expect(window.mediaOut < Fraction(reducing: 62_800, 1_000))
+    }
+
+    @Test("TimeMap keeps a wide affine endpoint exact")
+    func project_TimeMapWideAffineEndpoint_RemainsExact() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="1001/30000s" width="1920" height="1080"/>
+                    <asset id="r2" name="Wide" start="433523090/30000s" duration="435435/30000s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/wide.mov"/>
+                    </asset>
+                </resources>
+                <library><event name="E"><project name="P">
+                    <sequence format="r1" duration="178178/30000s" tcStart="0s"><spine>
+                        <asset-clip ref="r2" offset="0s" start="433599166/30000s" duration="178178/30000s">
+                            <timeMap>
+                                <timept time="433523090/30000s" value="433523090/30000s" interp="smooth2"/>
+                                <timept time="433642209/30000s" value="433642209/30000s" interp="smooth2"/>
+                                <timept time="433704271/30000s" value="14456809033789/1000000000s" interp="smooth2"/>
+                                <timept time="14465284166667/1000000000s" value="433958525/30000s" interp="smooth2"/>
+                            </timeMap>
+                        </asset-clip>
+                    </spine></sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let windows = try await fcpxml.projectTimeline(options: .projectRestoration)
+        let firstWindow = try #require(windows.first)
+        let lastWindow = try #require(windows.last)
+        let expectedStart = try #require(FinalCutPro.FCPXML.ExactTime(
+            numerator: 216_799_583,
+            denominator: 15_000
+        ))
+        let expectedEnd = try #require(FinalCutPro.FCPXML.ExactTime(
+            numerator: 1_102_896_248_281_897_869_801_367,
+            denominator: 76_276_200_003_000_000_000
+        ))
+        #expect(firstWindow.retiming.exactMediaStart == expectedStart)
+        #expect(lastWindow.retiming.exactMediaEnd == expectedEnd)
+        #expect(lastWindow.retiming.exactMediaEnd.fraction == nil)
+    }
+
+    @Test("TimeMap rejects an interior smooth transition endpoint without an exact curve")
+    func project_TimeMapSmoothTransitionInteriorSlice_FailsClosed() throws {
+        let map = FinalCutPro.FCPXML.TimeMap(timePoints: [
+            .init(
+                time: Fraction(0, 1),
+                originalTime: Fraction(0, 1),
+                interpolation: .smooth2,
+                transitionOutTime: Fraction(1, 1)
+            ),
+            .init(
+                time: Fraction(10, 1),
+                originalTime: Fraction(20, 1),
+                interpolation: .smooth2,
+                transitionInTime: Fraction(1, 1)
+            ),
+        ])
+
+        #expect(throws: (any Error).self) {
+            try map.retimingSegments(
+                clipOffset: .zero,
+                clipDuration: Fraction(5, 1),
+                clipTimeStart: Fraction(2, 1)
+            )
+        }
+    }
+
+    @Test("Restoration graph isolates an unrepresentable curve to its media leaf")
+    func project_RestorationGraphCurveFailure_DoesNotDiscardSiblingMedia() throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="1/25s" width="1920" height="1080"/>
+                    <asset id="r2" name="Exact" duration="10s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/exact.mov"/>
+                    </asset>
+                    <asset id="r3" name="Curve" duration="20s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/curve.mov"/>
+                    </asset>
+                </resources>
+                <library><event name="E"><project name="P" uid="project-isolation">
+                    <sequence format="r1" duration="10s" tcStart="0s"><spine>
+                        <asset-clip ref="r2" offset="0s" start="0s" duration="5s"/>
+                        <asset-clip ref="r3" offset="5s" start="2s" duration="5s">
+                            <timeMap>
+                                <timept time="0s" value="0s" interp="smooth2" outTime="1s"/>
+                                <timept time="10s" value="20s" interp="smooth2" inTime="1s"/>
+                            </timeMap>
+                        </asset-clip>
+                    </spine></sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let graph = try fcpxml.projectRestorationGraph(from: source)
+
+        #expect(graph.usages.contains { $0.resourceID == "r2" })
+        #expect(!graph.usages.contains { $0.resourceID == "r3" })
+        #expect(!graph.requiresCopyFullResourceIDs.contains("r2"))
+        #expect(graph.requiresCopyFullResourceIDs.contains("r3"))
+    }
+
+    @Test("TimeMap requires complete adjusted-time coverage")
+    func project_TimeMapIncompleteSelectedInterval_FailsClosed() throws {
+        let map = FinalCutPro.FCPXML.TimeMap(timePoints: [
+            .init(
+                time: Fraction(0, 1),
+                originalTime: Fraction(0, 1),
+                interpolation: .linear
+            ),
+            .init(
+                time: Fraction(10, 1),
+                originalTime: Fraction(20, 1),
+                interpolation: .linear
+            ),
+        ])
+
+        #expect(throws: (any Error).self) {
+            try map.retimingSegments(
+                clipOffset: .zero,
+                clipDuration: Fraction(5, 1),
+                clipTimeStart: Fraction(8, 1)
+            )
+        }
+    }
+
+    @Test("TimeMap uses asset start when clip start is omitted")
+    func project_TimeMapOmittedClipStart_UsesAssetStart() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="1/25s" width="1920" height="1080"/>
+                    <asset id="r2" start="10s" duration="50s" hasVideo="1" videoSources="1">
+                        <media-rep kind="original-media" src="file:///tmp/a.mov"/>
+                    </asset>
+                </resources>
+                <library><event name="E"><project name="P">
+                    <sequence format="r1" duration="5s" tcStart="0s"><spine>
+                        <asset-clip ref="r2" offset="0s" duration="5s">
+                            <timeMap>
+                                <timept time="10s" value="20s" interp="linear"/>
+                                <timept time="20s" value="40s" interp="linear"/>
+                            </timeMap>
+                        </asset-clip>
+                    </spine></sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let window = try #require(
+            try await fcpxml.projectTimeline(options: .projectRestoration).first
+        )
+        #expect(window.mediaIn == Fraction(20, 1))
+        #expect(window.mediaOut == Fraction(30, 1))
     }
 
     @Test("TimeMap reverse sets isReversed and negative speed magnitude")

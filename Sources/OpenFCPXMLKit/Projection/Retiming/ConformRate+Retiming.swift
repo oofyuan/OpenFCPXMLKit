@@ -46,12 +46,12 @@ extension FinalCutPro.FCPXML.ConformRate {
         else { return segment }
 
         return FinalCutPro.FCPXML.RetimingSegment(
-            timelineStart: segment.timelineStart,
-            timelineEnd: segment.timelineEnd,
-            mediaStart: segment.mediaStart,
-            mediaEnd: segment.mediaEnd,
+            exactTimelineStart: segment.exactTimelineStart,
+            exactTimelineEnd: segment.exactTimelineEnd,
+            exactMediaStart: segment.exactMediaStart,
+            exactMediaEnd: segment.exactMediaEnd,
             scale: abs(factor),
             isReversed: segment.isReversed
-        )
+        ) ?? segment
     }
 }

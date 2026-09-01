@@ -102,6 +102,19 @@ extension FinalCutPro.FCPXML {
             return adding(parentAbsoluteStart, childOffset)
         }
 
+        /// Exact counterpart used after affine projection has widened beyond `Fraction`.
+        static func absoluteStart(
+            offset: ExactTime,
+            parentAbsoluteStart: ExactTime,
+            parentLocalStart: ExactTime?
+        ) -> ExactTime? {
+            if let parentLocalStart {
+                guard let relative = offset.subtracting(parentLocalStart) else { return nil }
+                return parentAbsoluteStart.adding(relative)
+            }
+            return parentAbsoluteStart.adding(offset)
+        }
+
         /// Local timeline origin exposed to nested / anchored children after entering this element.
         static func localStartForChildren(of element: any OFKXMLElement) -> Fraction? {
             element.fcpStart
@@ -160,6 +173,41 @@ extension FinalCutPro.FCPXML {
                   )
             else { return nil }
             return result.fraction
+        }
+
+        /// Authoritative affine mapping that is not constrained by the legacy `Fraction` width.
+        static func affineExactPoint(
+            _ point: Fraction,
+            inputStart: Fraction,
+            inputEnd: Fraction,
+            outputStart: Fraction,
+            outputEnd: Fraction
+        ) -> ExactTime? {
+            guard let point = ExactTime(point),
+                  let inputStart = ExactTime(inputStart),
+                  let inputEnd = ExactTime(inputEnd),
+                  let outputStart = ExactTime(outputStart),
+                  let outputEnd = ExactTime(outputEnd)
+            else { return nil }
+            return ExactTime.affinePoint(
+                point,
+                inputStart: inputStart,
+                inputEnd: inputEnd,
+                outputStart: outputStart,
+                outputEnd: outputEnd
+            )
+        }
+
+        static func ordered(_ lhs: ExactTime, _ rhs: ExactTime) -> (ExactTime, ExactTime) {
+            lhs.compared(to: rhs) == .greater ? (rhs, lhs) : (lhs, rhs)
+        }
+
+        static func minimum(_ lhs: ExactTime, _ rhs: ExactTime) -> ExactTime {
+            lhs.compared(to: rhs) == .greater ? rhs : lhs
+        }
+
+        static func maximum(_ lhs: ExactTime, _ rhs: ExactTime) -> ExactTime {
+            lhs.compared(to: rhs) == .less ? rhs : lhs
         }
     }
 }

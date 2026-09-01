@@ -18,14 +18,15 @@ extension FinalCutPro.FCPXML {
     /// A normalized rational time value used by authoritative projection calculations.
     ///
     /// The denominator is always positive, zero is always represented as `0/1`, and every
-    /// nonzero value is reduced. Operations return `nil` when their exact result cannot be stored
-    /// in this fixed-width representation; they never substitute a floating-point approximation
-    /// or a saturated integer.
+    /// nonzero value is reduced. Projection uses Swift's 128-bit integers so affine calculations
+    /// do not fail merely because a valid FCPXML result exceeds the legacy 64-bit `Fraction`
+    /// boundary. Operations still return `nil` on genuine 128-bit overflow; they never substitute
+    /// a floating-point approximation or a saturated integer.
     public struct ExactTime: Hashable, Sendable {
-        public let numerator: Int64
-        public let denominator: Int64
+        public let numerator: Int128
+        public let denominator: Int128
 
-        public init?(numerator: Int64, denominator: Int64) {
+        public init?(numerator: Int128, denominator: Int128) {
             guard denominator > 0 else { return nil }
             if numerator == 0 {
                 self.numerator = 0
@@ -35,17 +36,17 @@ extension FinalCutPro.FCPXML {
 
             let divisor = Self.greatestCommonDivisor(
                 numerator.magnitude,
-                UInt64(denominator)
+                UInt128(denominator)
             )
-            guard let signedDivisor = Int64(exactly: divisor) else { return nil }
+            guard let signedDivisor = Int128(exactly: divisor) else { return nil }
             self.numerator = numerator / signedDivisor
             self.denominator = denominator / signedDivisor
         }
 
         /// Creates an exact value from SwiftTimecode's compatibility `Fraction` type.
         public init?(_ fraction: Fraction) {
-            guard let numerator = Int64(exactly: fraction.numerator),
-                  let denominator = Int64(exactly: fraction.denominator)
+            guard let numerator = Int128(exactly: fraction.numerator),
+                  let denominator = Int128(exactly: fraction.denominator)
             else { return nil }
             self.init(numerator: numerator, denominator: denominator)
         }
@@ -58,6 +59,52 @@ extension FinalCutPro.FCPXML {
                   let denominator = Int(exactly: denominator)
             else { return nil }
             return Fraction(numerator, denominator)
+        }
+
+        /// A bounded compatibility value for legacy display/reporting APIs.
+        ///
+        /// Projection and restoration code must use the authoritative `ExactTime` value. This
+        /// adapter is exact whenever possible; otherwise it rounds once, using integer arithmetic,
+        /// to at most nanosecond precision so existing `Fraction`-based presentation APIs remain
+        /// source compatible without influencing projection decisions.
+        public var compatibilityFraction: Fraction? {
+            if let fraction { return fraction }
+
+            let whole = numerator / denominator
+            guard whole.magnitude <= UInt128(Int.max) else { return nil }
+            let wholeMagnitude = Int128(whole.magnitude)
+            let maximumDenominator = Int128(Int.max) / (wholeMagnitude + 1)
+            let targetDenominator = min(Int128(1_000_000_000), maximumDenominator)
+            guard targetDenominator > 0 else { return nil }
+
+            let remainderMagnitude = (numerator % denominator).magnitude
+            let product = remainderMagnitude.multipliedFullWidth(
+                by: UInt128(targetDenominator)
+            )
+            let division = UInt128(denominator).dividingFullWidth(product)
+            var fractionalMagnitude = division.quotient
+            if division.remainder >= UInt128(denominator) - division.remainder {
+                fractionalMagnitude += 1
+            }
+
+            let (base, baseOverflow) = whole.multipliedReportingOverflow(
+                by: targetDenominator
+            )
+            guard !baseOverflow,
+                  let fractional = Int128(exactly: fractionalMagnitude)
+            else { return nil }
+            let signedFractional = numerator < 0 ? -fractional : fractional
+            let (combined, overflow) = base.addingReportingOverflow(signedFractional)
+            guard !overflow,
+                  let compatibleNumerator = Int(exactly: combined),
+                  let compatibleDenominator = Int(exactly: targetDenominator)
+            else { return nil }
+            return Fraction(reducing: compatibleNumerator, compatibleDenominator)
+        }
+
+        /// Non-authoritative display/statistics conversion.
+        public var doubleValue: Double {
+            Double(numerator) / Double(denominator)
         }
 
         /// Exact ordering by signed full-width cross multiplication.
@@ -89,7 +136,7 @@ extension FinalCutPro.FCPXML {
             if numerator == 0 || other.numerator == 0 { return .zero }
             return Self.product(
                 numeratorMagnitudes: [numerator.magnitude, other.numerator.magnitude],
-                denominatorMagnitudes: [UInt64(denominator), UInt64(other.denominator)],
+                denominatorMagnitudes: [UInt128(denominator), UInt128(other.denominator)],
                 negative: (numerator < 0) != (other.numerator < 0)
             )
         }
@@ -98,8 +145,8 @@ extension FinalCutPro.FCPXML {
             guard other.numerator != 0 else { return nil }
             if numerator == 0 { return .zero }
             return Self.product(
-                numeratorMagnitudes: [numerator.magnitude, UInt64(other.denominator)],
-                denominatorMagnitudes: [UInt64(denominator), other.numerator.magnitude],
+                numeratorMagnitudes: [numerator.magnitude, UInt128(other.denominator)],
+                denominatorMagnitudes: [UInt128(denominator), other.numerator.magnitude],
                 negative: (numerator < 0) != (other.numerator < 0)
             )
         }
@@ -127,8 +174,8 @@ extension FinalCutPro.FCPXML {
             return outputStart.adding(projectedOffset)
         }
 
-        private typealias SignedFullWidth = (high: Int64, low: UInt64)
-        private typealias UnsignedFullWidth = (high: UInt64, low: UInt64)
+        private typealias SignedFullWidth = (high: Int128, low: UInt128)
+        private typealias UnsignedFullWidth = (high: UInt128, low: UInt128)
 
         private static func combining(
             _ lhs: Self,
@@ -136,10 +183,10 @@ extension FinalCutPro.FCPXML {
             subtract: Bool
         ) -> Self? {
             let sharedDivisor = greatestCommonDivisor(
-                UInt64(lhs.denominator),
-                UInt64(rhs.denominator)
+                UInt128(lhs.denominator),
+                UInt128(rhs.denominator)
             )
-            guard let divisor = Int64(exactly: sharedDivisor) else { return nil }
+            guard let divisor = Int128(exactly: sharedDivisor) else { return nil }
             let lhsMultiplier = rhs.denominator / divisor
             let rhsMultiplier = lhs.denominator / divisor
             let lhsProduct = lhs.numerator.multipliedFullWidth(by: lhsMultiplier)
@@ -153,7 +200,7 @@ extension FinalCutPro.FCPXML {
                   )
             else { return nil }
 
-            guard let cancellation = Int64(exactly: reducedNumerator.cancellation) else {
+            guard let cancellation = Int128(exactly: reducedNumerator.cancellation) else {
                 return nil
             }
             let reducedLHSDenominator = lhs.denominator / cancellation
@@ -174,11 +221,11 @@ extension FinalCutPro.FCPXML {
                 numeratorMagnitudes: [
                     lhs.numerator.magnitude,
                     rhs.numerator.magnitude,
-                    UInt64(divisor.denominator)
+                    UInt128(divisor.denominator)
                 ],
                 denominatorMagnitudes: [
-                    UInt64(lhs.denominator),
-                    UInt64(rhs.denominator),
+                    UInt128(lhs.denominator),
+                    UInt128(rhs.denominator),
                     divisor.numerator.magnitude
                 ],
                 negative: ((lhs.numerator < 0) != (rhs.numerator < 0))
@@ -187,8 +234,8 @@ extension FinalCutPro.FCPXML {
         }
 
         private static func product(
-            numeratorMagnitudes: [UInt64],
-            denominatorMagnitudes: [UInt64],
+            numeratorMagnitudes: [UInt128],
+            denominatorMagnitudes: [UInt128],
             negative: Bool
         ) -> Self? {
             if numeratorMagnitudes.contains(0) { return .zero }
@@ -206,13 +253,13 @@ extension FinalCutPro.FCPXML {
                 }
             }
 
-            var numeratorMagnitude: UInt64 = 1
+            var numeratorMagnitude: UInt128 = 1
             for factor in numerators {
                 let (product, overflow) = numeratorMagnitude.multipliedReportingOverflow(by: factor)
                 guard !overflow else { return nil }
                 numeratorMagnitude = product
             }
-            var denominatorMagnitude: UInt64 = 1
+            var denominatorMagnitude: UInt128 = 1
             for factor in denominators {
                 let (product, overflow) = denominatorMagnitude
                     .multipliedReportingOverflow(by: factor)
@@ -224,7 +271,7 @@ extension FinalCutPro.FCPXML {
                 magnitude: numeratorMagnitude,
                 negative: negative
             ),
-            let denominator = Int64(exactly: denominatorMagnitude)
+            let denominator = Int128(exactly: denominatorMagnitude)
             else { return nil }
             return Self(numerator: numerator, denominator: denominator)
         }
@@ -234,10 +281,10 @@ extension FinalCutPro.FCPXML {
             _ rhs: SignedFullWidth
         ) -> SignedFullWidth? {
             let (low, carry) = lhs.low.addingReportingOverflow(rhs.low)
-            let (partialHigh, _) = UInt64(bitPattern: lhs.high)
-                .addingReportingOverflow(UInt64(bitPattern: rhs.high))
+            let (partialHigh, _) = UInt128(bitPattern: lhs.high)
+                .addingReportingOverflow(UInt128(bitPattern: rhs.high))
             let (highBits, _) = partialHigh.addingReportingOverflow(carry ? 1 : 0)
-            let result: SignedFullWidth = (high: Int64(bitPattern: highBits), low: low)
+            let result: SignedFullWidth = (high: Int128(bitPattern: highBits), low: low)
             let lhsNegative = lhs.high < 0
             let rhsNegative = rhs.high < 0
             guard lhsNegative != rhsNegative || (result.high < 0) == lhsNegative else {
@@ -251,10 +298,10 @@ extension FinalCutPro.FCPXML {
             _ rhs: SignedFullWidth
         ) -> SignedFullWidth? {
             let (low, borrow) = lhs.low.subtractingReportingOverflow(rhs.low)
-            let (partialHigh, _) = UInt64(bitPattern: lhs.high)
-                .subtractingReportingOverflow(UInt64(bitPattern: rhs.high))
+            let (partialHigh, _) = UInt128(bitPattern: lhs.high)
+                .subtractingReportingOverflow(UInt128(bitPattern: rhs.high))
             let (highBits, _) = partialHigh.subtractingReportingOverflow(borrow ? 1 : 0)
-            let result: SignedFullWidth = (high: Int64(bitPattern: highBits), low: low)
+            let result: SignedFullWidth = (high: Int128(bitPattern: highBits), low: low)
             let lhsNegative = lhs.high < 0
             let rhsNegative = rhs.high < 0
             guard lhsNegative == rhsNegative || (result.high < 0) == lhsNegative else {
@@ -265,8 +312,8 @@ extension FinalCutPro.FCPXML {
 
         private static func reducingFullWidth(
             _ value: SignedFullWidth,
-            cancellableBy divisor: UInt64
-        ) -> (value: Int64, cancellation: UInt64)? {
+            cancellableBy divisor: UInt128
+        ) -> (value: Int128, cancellation: UInt128)? {
             guard divisor > 0 else { return nil }
             let negative = value.high < 0
             let magnitude = fullWidthMagnitude(of: value)
@@ -285,16 +332,16 @@ extension FinalCutPro.FCPXML {
         }
 
         private static func fullWidthMagnitude(of value: SignedFullWidth) -> UnsignedFullWidth {
-            guard value.high < 0 else { return (UInt64(value.high), value.low) }
+            guard value.high < 0 else { return (UInt128(value.high), value.low) }
             let (low, carry) = (~value.low).addingReportingOverflow(1)
-            let high = ~UInt64(bitPattern: value.high) &+ (carry ? 1 : 0)
+            let high = ~UInt128(bitPattern: value.high) &+ (carry ? 1 : 0)
             return (high, low)
         }
 
         private static func dividingMagnitude(
             _ value: UnsignedFullWidth,
-            by divisor: UInt64
-        ) -> (quotient: UnsignedFullWidth, remainder: UInt64)? {
+            by divisor: UInt128
+        ) -> (quotient: UnsignedFullWidth, remainder: UInt128)? {
             guard divisor > 0 else { return nil }
             let highQuotient = value.high / divisor
             let highRemainder = value.high % divisor
@@ -302,16 +349,16 @@ extension FinalCutPro.FCPXML {
             return ((highQuotient, lowDivision.quotient), lowDivision.remainder)
         }
 
-        private static func signedValue(magnitude: UInt64, negative: Bool) -> Int64? {
+        private static func signedValue(magnitude: UInt128, negative: Bool) -> Int128? {
             if negative {
-                if magnitude == UInt64(Int64.max) + 1 { return .min }
-                guard let value = Int64(exactly: magnitude) else { return nil }
+                if magnitude == UInt128(Int128.max) + 1 { return .min }
+                guard let value = Int128(exactly: magnitude) else { return nil }
                 return -value
             }
-            return Int64(exactly: magnitude)
+            return Int128(exactly: magnitude)
         }
 
-        private static func greatestCommonDivisor(_ lhs: UInt64, _ rhs: UInt64) -> UInt64 {
+        private static func greatestCommonDivisor(_ lhs: UInt128, _ rhs: UInt128) -> UInt128 {
             var first = lhs
             var second = rhs
             while second != 0 {
@@ -331,8 +378,8 @@ extension FinalCutPro.FCPXML.ExactTime: Codable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let numerator = try container.decode(Int64.self, forKey: .numerator)
-        let denominator = try container.decode(Int64.self, forKey: .denominator)
+        let numerator = try container.decode(Int128.self, forKey: .numerator)
+        let denominator = try container.decode(Int128.self, forKey: .denominator)
         guard let value = Self(numerator: numerator, denominator: denominator) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .denominator,
