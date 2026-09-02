@@ -102,16 +102,15 @@ extension FinalCutPro.FCPXML {
                 for: element,
                 resources: resources
             )
-            if refClip.timeMap != nil || !conformMapping.isIdentity {
-                let containerSegments = try SpineProjection.containerContentRetimings(
-                    timeMap: refClip.timeMap,
-                    timelineOffset: absoluteStart,
-                    timelineDuration: duration,
-                    sourceLocalStart: nestedLocalStart,
-                    conformMapping: conformMapping
-                )
-                childParents.append(containerSegments)
-            }
+            // The identity case still carries the ref-clip's selected start/duration boundary.
+            let containerSegments = try SpineProjection.containerContentRetimings(
+                timeMap: refClip.timeMap,
+                timelineOffset: absoluteStart,
+                timelineDuration: duration,
+                sourceLocalStart: nestedLocalStart,
+                conformMapping: conformMapping
+            )
+            childParents.append(containerSegments)
 
             try SpineProjection.projectStoryElements(
                 sequence.spine.element.fcpProjectableStoryElements,

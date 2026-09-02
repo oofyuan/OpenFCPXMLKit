@@ -1376,6 +1376,58 @@ struct FCPXMLTimelineProjectionTests {
         #expect(windows[0].mediaIn == Fraction(3, 1))
     }
 
+    @Test("Nested ref-clip selection clips leaf video and audio to the parent interval")
+    func project_NestedRefClip_ClipsLeavesToParentSelection() async throws {
+        let fcpxml = try parseInlineFCPXML("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE fcpxml>
+            <fcpxml version="1.11">
+                <resources>
+                    <format id="r1" frameDuration="1/25s" width="1920" height="1080"/>
+                    <asset id="r2" name="Leaf" format="r1" start="0s" duration="20s"
+                        hasVideo="1" videoSources="1" hasAudio="1" audioSources="1"
+                        audioChannels="1" audioRate="48000">
+                        <media-rep kind="original-media" src="file:///tmp/leaf.mov"/>
+                    </asset>
+                    <media id="rInner" name="Inner Compound">
+                        <sequence format="r1" duration="10s" tcStart="0s"><spine>
+                            <video ref="r2" offset="0s" start="0s" duration="10s" name="Nested Video"/>
+                            <audio ref="r2" lane="-1" offset="2s" start="4s" duration="3s" name="Nested Audio"/>
+                        </spine></sequence>
+                    </media>
+                    <media id="rOuter" name="Outer Compound">
+                        <sequence format="r1" duration="10s" tcStart="0s"><spine>
+                            <ref-clip ref="rInner" offset="0s" start="0s" duration="10s"/>
+                        </spine></sequence>
+                    </media>
+                </resources>
+                <library><event name="E"><project name="P">
+                    <sequence format="r1" duration="20s" tcStart="0s"><spine>
+                        <ref-clip ref="rOuter" offset="5s" start="2s" duration="4s"/>
+                    </spine></sequence>
+                </project></event></library>
+            </fcpxml>
+            """)
+
+        let source = try #require(fcpxml.allReportTimelineSources().first)
+        let windows = try await projector.project(
+            from: source,
+            fcpxml: fcpxml,
+            options: .projectRestoration
+        )
+        let video = try #require(windows.first { $0.clipDisplayName == "Nested Video" })
+        let audio = try #require(windows.first { $0.clipDisplayName == "Nested Audio" })
+
+        #expect(video.timelineIn == Fraction(5, 1))
+        #expect(video.timelineOut == Fraction(9, 1))
+        #expect(video.mediaIn == Fraction(2, 1))
+        #expect(video.mediaOut == Fraction(6, 1))
+        #expect(audio.timelineIn == Fraction(5, 1))
+        #expect(audio.timelineOut == Fraction(8, 1))
+        #expect(audio.mediaIn == Fraction(4, 1))
+        #expect(audio.mediaOut == Fraction(7, 1))
+    }
+
     @Test("Audition active-only emits first child")
     func project_Audition_ActiveOnly_EmitsFirstChild() async throws {
         let fcpxml = try parseInlineFCPXML("""
